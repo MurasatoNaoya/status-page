@@ -24,7 +24,7 @@
                 <div class="active-incident-desc">{{ inc.updates[0].message }}</div>
                 <div class="active-incident-meta">
                     <span class="incident-update-status {{ inc.status }}">{{ inc.status }}</span>
-                    &middot; Ongoing since {{ inc.created_at }}
+                    &middot; Ongoing since {{ inc.created_at | gmt }}
                 </div>
                 {% endif %}
             </div>
@@ -151,11 +151,17 @@
                             {% for day in svc.days %}
                             <div class="uptime-day {% if day.uptime_pct is none %}no-data{% elif day.uptime_pct == 100 %}up{% elif day.uptime_pct >= 95 %}degraded{% else %}down{% endif %}">
                                 <div class="tooltip">
-                                    {{ day.date }}<br>
+                                    <strong>{{ day.date }}</strong><br>
                                     {% if day.uptime_pct is none %}
                                         No data
                                     {% else %}
                                         {{ day.uptime_pct | round(1) }}% uptime
+                                        {% if day.down_count > 0 %}
+                                            <br>{{ day.down_count }}/{{ day.total }} checks failed
+                                            {% for err in day.errors %}
+                                                <br><span class="tooltip-error">{{ err[:80] }}</span>
+                                            {% endfor %}
+                                        {% endif %}
                                     {% endif %}
                                 </div>
                             </div>
@@ -189,7 +195,7 @@
                     <div class="incident-update">
                         <span class="incident-update-status {{ update.status }}">{{ update.status }}</span>
                         — {{ update.message }}
-                        <div class="incident-time">{{ update.created_at }}</div>
+                        <div class="incident-time">{{ update.created_at | gmt }}</div>
                     </div>
                     {% endfor %}
                 </div>

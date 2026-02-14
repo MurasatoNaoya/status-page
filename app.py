@@ -25,6 +25,18 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 
+@app.template_filter("gmt")
+def format_gmt(value):
+    """Format an ISO timestamp as 'Feb 14, 2026 18:22 GMT'."""
+    if not value:
+        return ""
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return dt.strftime("%b %d, %Y %H:%M GMT")
+    except (ValueError, AttributeError):
+        return value
+
+
 def load_config(path="config.yaml"):
     with open(path) as f:
         return yaml.safe_load(f)

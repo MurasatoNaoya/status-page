@@ -198,6 +198,55 @@ header p {
     margin-top: 6px;
 }
 
+/* Service groups */
+.group-section {
+    margin-top: 24px;
+}
+
+.group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 20px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    cursor: pointer;
+    list-style: none;
+    margin-bottom: 0;
+    transition: border-radius 0.15s;
+}
+
+details[open] > .group-header {
+    border-radius: 10px 10px 0 0;
+    border-bottom: none;
+}
+
+.group-header::-webkit-details-marker { display: none; }
+
+.group-header::before {
+    content: "\25B6";
+    font-size: 10px;
+    color: var(--text-secondary);
+    transition: transform 0.15s;
+    margin-right: 8px;
+}
+
+details[open] > .group-header::before {
+    transform: rotate(90deg);
+}
+
+.group-name {
+    font-size: 15px;
+    font-weight: 600;
+    flex: 1;
+}
+
+details[open] > .group-header + .services {
+    border-top: none;
+    border-radius: 0 0 10px 10px;
+}
+
 /* Incidents section */
 .incidents-section {
     margin-top: 48px;

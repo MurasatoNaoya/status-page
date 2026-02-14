@@ -30,6 +30,7 @@ def load_config(path="config.yaml"):
 
 CONFIG = load_config()
 SERVICES = CONFIG.get("services", [])
+GROUPS = CONFIG.get("groups", [])
 PAGE = CONFIG.get("page", {})
 
 
@@ -41,9 +42,17 @@ def run_service_check(service):
                service["name"], status, response_time_ms or "")
 
 
+def all_services():
+    """Flatten all services from top-level and groups."""
+    svcs = list(SERVICES)
+    for group in GROUPS:
+        svcs.extend(group.get("services", []))
+    return svcs
+
+
 def start_scheduler():
     scheduler = BackgroundScheduler()
-    for svc in SERVICES:
+    for svc in all_services():
         interval = svc.get("interval", 60)
         scheduler.add_job(
             run_service_check,
@@ -59,21 +68,18 @@ def start_scheduler():
     return scheduler
 
 
-@app.route("/")
-def index():
-    service_names = [s["name"] for s in SERVICES]
-    latest = get_latest_status(service_names)
-
-    services_data = []
+def build_service_data(svc_list, latest):
+    """Build template-ready data for a list of services."""
     all_operational = True
-    for svc in SERVICES:
+    services_data = []
+    today = datetime.now(timezone.utc).date()
+
+    for svc in svc_list:
         name = svc["name"]
         status_info = latest.get(name)
         uptime_pct = get_uptime_percentage(name)
         uptime_days = get_uptime_days(name)
 
-        # Build 90-day array (fill missing days)
-        today = datetime.now(timezone.utc).date()
         day_map = {d["day"]: d for d in uptime_days}
         days_array = []
         for i in range(89, -1, -1):
@@ -98,14 +104,37 @@ def index():
             "days": days_array,
         })
 
-    incidents = get_recent_incidents(limit=20)
+    return services_data, all_operational
 
+
+@app.route("/")
+def index():
+    all_svc_names = [s["name"] for s in all_services()]
+    latest = get_latest_status(all_svc_names)
+
+    services_data, top_ok = build_service_data(SERVICES, latest)
+
+    groups_data = []
+    groups_ok = True
+    for group in GROUPS:
+        group_svcs, group_operational = build_service_data(group.get("services", []), latest)
+        if not group_operational:
+            groups_ok = False
+        groups_data.append({
+            "name": group["name"],
+            "services": group_svcs,
+            "operational": group_operational,
+        })
+
+    all_operational = top_ok and groups_ok
+    incidents = get_recent_incidents(limit=20)
     overall = "operational" if all_operational else "major_outage"
 
     return render_template(
         "index.html",
         page=PAGE,
         services=services_data,
+        groups=groups_data,
         incidents=incidents,
         overall=overall,
     )
@@ -133,7 +162,7 @@ def api_update_incident(incident_id):
 
 @app.route("/api/health")
 def api_health():
-    service_names = [s["name"] for s in SERVICES]
+    service_names = [s["name"] for s in all_services()]
     latest = get_latest_status(service_names)
     return jsonify({
         name: {"status": info["status"], "response_time_ms": info["response_time_ms"]}

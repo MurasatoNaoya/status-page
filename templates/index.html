@@ -72,6 +72,64 @@
             {% endfor %}
         </div>
 
+        <!-- Service Groups -->
+        {% for group in groups %}
+        <div class="group-section">
+            <details open>
+                <summary class="group-header">
+                    <span class="group-name">{{ group.name }}</span>
+                    <span class="service-badge {{ 'operational' if group.operational else 'major_outage' }}">
+                        {{ 'Operational' if group.operational else 'Issues Detected' }}
+                    </span>
+                </summary>
+                <div class="services">
+                    {% for svc in group.services %}
+                    <div class="service">
+                        <div class="service-header">
+                            <span class="service-name">{{ svc.name }}</span>
+                            <div class="service-meta">
+                                {% if svc.uptime_pct is not none %}
+                                    <span>{{ svc.uptime_pct }}% uptime</span>
+                                {% endif %}
+                                <span class="service-badge {{ svc.status }}">
+                                    {% if svc.status == 'operational' %}Operational
+                                    {% elif svc.status == 'degraded' %}Degraded
+                                    {% elif svc.status == 'partial_outage' %}Partial Outage
+                                    {% elif svc.status == 'major_outage' %}Major Outage
+                                    {% else %}{{ svc.status }}
+                                    {% endif %}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="uptime-bar">
+                            {% for day in svc.days %}
+                            <div class="uptime-day {% if day.uptime_pct is none %}no-data{% elif day.uptime_pct == 100 %}up{% elif day.uptime_pct >= 95 %}degraded{% else %}down{% endif %}">
+                                <div class="tooltip">
+                                    {{ day.date }}<br>
+                                    {% if day.uptime_pct is none %}
+                                        No data
+                                    {% else %}
+                                        {{ day.uptime_pct | round(1) }}% uptime
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <div class="uptime-footer">
+                            <span>90 days ago</span>
+                            {% if svc.response_time_ms %}
+                                <span>{{ svc.response_time_ms | round(0) | int }}ms</span>
+                            {% endif %}
+                            <span>Today</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </details>
+        </div>
+        {% endfor %}
+
         <!-- Incidents -->
         <div class="incidents-section">
             <h2>Past Incidents</h2>

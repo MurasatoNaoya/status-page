@@ -28,3 +28,38 @@ services:
   #   type: script
   #   command: "/path/to/check.sh"
   #   interval: 120
+
+groups:
+  - name: "Azure UK South"
+    services:
+      - name: "Azure Status (UK South)"
+        type: azure_status
+        region: "UK South"
+        interval: 300
+
+      - name: "Azure Portal"
+        type: http
+        url: "https://portal.azure.com"
+        expected_status: 200
+        interval: 120
+
+      - name: "Azure ARM API"
+        type: http
+        url: "https://management.azure.com/subscriptions?api-version=2020-01-01"
+        expected_status: 401
+        interval: 120
+
+      - name: "Azure Blob Storage (UK South)"
+        type: dns
+        hostname: "uksouth.blob.core.windows.net"
+        interval: 120
+
+      - name: "Azure SQL (UK South)"
+        type: dns
+        hostname: "uksouth.database.windows.net"
+        interval: 120
+
+      - name: "Azure AD / Entra ID"
+        type: http
+        url: "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration"
+        interval: 120

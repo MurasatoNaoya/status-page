@@ -2,6 +2,30 @@ page:
   title: "Status"
   description: "Service Status"
 
+dns_bar:
+  name: "DNS Resolution"
+  interval: 60
+  targets:
+    - hostname: "uksouth.blob.core.windows.net"
+      label: "Azure Blob"
+    - hostname: "uksouth.database.windows.net"
+      label: "Azure SQL"
+    - hostname: "azurecr.io"
+      label: "ACR"
+    - hostname: "login.microsoftonline.com"
+      label: "Entra ID"
+    - hostname: "management.azure.com"
+      label: "ARM API"
+    - hostname: "registry-1.docker.io"
+      label: "Docker Hub"
+    - hostname: "ghcr.io"
+      label: "GHCR"
+    # --- Uncomment for private network targets ---
+    # - hostname: "mydb.privatelink.database.windows.net"
+    #   label: "DB Private Link"
+    # - hostname: "myaks.uksouth.azmk8s.io"
+    #   label: "AKS API"
+
 services:
   - name: "Example API"
     type: http

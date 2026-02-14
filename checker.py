@@ -110,6 +110,37 @@ def check_azure_status(service):
         return "down", None, str(e)
 
 
+def check_dns_bar(targets):
+    """Resolve multiple DNS targets and return per-target results.
+
+    Returns list of {label, hostname, status, ms, error}.
+    """
+    results = []
+    for target in targets:
+        hostname = target["hostname"]
+        label = target.get("label", hostname)
+        try:
+            start = time.monotonic()
+            socket.getaddrinfo(hostname, None)
+            elapsed_ms = (time.monotonic() - start) * 1000
+            results.append({
+                "label": label,
+                "hostname": hostname,
+                "status": "up",
+                "ms": round(elapsed_ms, 1),
+                "error": None,
+            })
+        except socket.gaierror as e:
+            results.append({
+                "label": label,
+                "hostname": hostname,
+                "status": "down",
+                "ms": None,
+                "error": str(e),
+            })
+    return results
+
+
 CHECKERS = {
     "http": check_http,
     "tcp": check_tcp,

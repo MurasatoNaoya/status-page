@@ -32,6 +32,28 @@
         </div>
         {% endif %}
 
+        <!-- DNS Resolution Bar -->
+        {% if dns_bar %}
+        <div class="dns-bar {{ 'up' if dns_bar.all_up else 'down' }}">
+            <div class="dns-bar-header">
+                <span class="dns-bar-title">{{ dns_bar.name }}</span>
+                <span class="dns-bar-status">
+                    {% if dns_bar.all_up %}All Resolving{% else %}Resolution Failures{% endif %}
+                </span>
+            </div>
+            <div class="dns-bar-targets">
+                {% for t in dns_bar.targets %}
+                <div class="dns-target {{ t.status }}">
+                    <span class="dns-target-dot {{ t.status }}"></span>
+                    <span class="dns-target-label">{{ t.label }}</span>
+                    {% if t.ms %}<span class="dns-target-ms">{{ t.ms }}ms</span>{% endif %}
+                    {% if t.error %}<span class="dns-target-error">{{ t.error[:40] }}</span>{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Overall status banner -->
         <div class="overall-status {{ overall }}">
             <span class="status-dot {{ overall }}"></span>
@@ -181,21 +203,26 @@
         </div>
         {% endfor %}
 
-        <!-- Incidents -->
+        <!-- Past Incidents (grouped by date) -->
         <div class="incidents-section">
             <h2>Past Incidents</h2>
-            {% if incidents %}
-                {% for incident in incidents %}
-                <div class="incident">
-                    <div class="incident-title">
-                        {{ incident.title }}
-                        <span class="incident-impact {{ incident.impact }}">{{ incident.impact }}</span>
-                    </div>
-                    {% for update in incident.updates %}
-                    <div class="incident-update">
-                        <span class="incident-update-status {{ update.status }}">{{ update.status }}</span>
-                        — {{ update.message }}
-                        <div class="incident-time">{{ update.created_at | gmt }}</div>
+            {% if incidents_by_date %}
+                {% for date_label, date_incidents in incidents_by_date.items() %}
+                <div class="incident-date-group">
+                    <div class="incident-date-header">{{ date_label }}</div>
+                    {% for incident in date_incidents %}
+                    <div class="incident">
+                        <div class="incident-title">
+                            {{ incident.title }}
+                            <span class="incident-impact {{ incident.impact }}">{{ incident.impact }}</span>
+                        </div>
+                        {% for update in incident.updates %}
+                        <div class="incident-update">
+                            <span class="incident-update-status {{ update.status }}">{{ update.status }}</span>
+                            — {{ update.message }}
+                            <div class="incident-time">{{ update.created_at | gmt }}</div>
+                        </div>
+                        {% endfor %}
                     </div>
                     {% endfor %}
                 </div>

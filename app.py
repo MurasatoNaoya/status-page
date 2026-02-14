@@ -5,7 +5,7 @@ import yaml
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask import Flask, jsonify, render_template, request
 
-from checker import run_check
+from checker import check_dns_bar, run_check
 from social import search_outage_chatter
 from database import (
     create_incident,
@@ -45,7 +45,11 @@ def load_config(path="config.yaml"):
 CONFIG = load_config()
 SERVICES = CONFIG.get("services", [])
 GROUPS = CONFIG.get("groups", [])
+DNS_BAR = CONFIG.get("dns_bar", None)
 PAGE = CONFIG.get("page", {})
+
+# Cache for DNS bar results (updated by scheduler)
+_dns_bar_results = []
 
 
 def run_service_check(service):
@@ -64,8 +68,23 @@ def all_services():
     return svcs
 
 
+def run_dns_bar_check():
+    """Run all DNS bar checks and cache results."""
+    global _dns_bar_results
+    if DNS_BAR:
+        _dns_bar_results = check_dns_bar(DNS_BAR.get("targets", []))
+
+
 def start_scheduler():
     scheduler = BackgroundScheduler()
+
+    # Schedule DNS bar checks
+    if DNS_BAR:
+        interval = DNS_BAR.get("interval", 60)
+        scheduler.add_job(run_dns_bar_check, "interval", seconds=interval,
+                          id="dns_bar", replace_existing=True)
+        scheduler.add_job(run_dns_bar_check, id="dns_bar_init")
+
     for svc in all_services():
         interval = svc.get("interval", 60)
         scheduler.add_job(
@@ -157,7 +176,30 @@ def index():
 
     all_operational = top_ok and groups_ok
     active_incidents = get_active_incidents()
-    past_incidents = get_recent_incidents(limit=20)
+    past_incidents = get_recent_incidents(limit=50)
+
+    # Check DNS bar health
+    dns_bar_data = None
+    if DNS_BAR and _dns_bar_results:
+        all_dns_up = all(r["status"] == "up" for r in _dns_bar_results)
+        if not all_dns_up:
+            all_operational = False
+        dns_bar_data = {
+            "name": DNS_BAR.get("name", "DNS Resolution"),
+            "targets": _dns_bar_results,
+            "all_up": all_dns_up,
+        }
+
+    # Group past incidents by date
+    incidents_by_date = {}
+    for inc in past_incidents:
+        date_str = inc["created_at"][:10]  # "2026-02-14"
+        try:
+            dt = datetime.fromisoformat(date_str)
+            date_label = dt.strftime("%b %d, %Y")
+        except ValueError:
+            date_label = date_str
+        incidents_by_date.setdefault(date_label, []).append(inc)
 
     if active_incidents:
         overall = "major_outage"
@@ -171,8 +213,9 @@ def index():
         page=PAGE,
         services=services_data,
         groups=groups_data,
+        dns_bar=dns_bar_data,
         active_incidents=active_incidents,
-        past_incidents=past_incidents,
+        incidents_by_date=incidents_by_date,
         incidents=past_incidents,
         overall=overall,
     )

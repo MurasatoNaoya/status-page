@@ -6,8 +6,10 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from flask import Flask, jsonify, render_template, request
 
 from checker import run_check
+from social import search_outage_chatter
 from database import (
     create_incident,
+    get_active_incidents,
     get_latest_status,
     get_recent_incidents,
     get_uptime_days,
@@ -87,21 +89,36 @@ def build_service_data(svc_list, latest):
             if day in day_map:
                 d = day_map[day]
                 pct = 100.0 * d["up_count"] / d["total"] if d["total"] > 0 else None
-                days_array.append({"date": day, "uptime_pct": pct})
+                # Get unique errors for the day (deduplicated)
+                errors_raw = d.get("errors") or ""
+                errors = list(dict.fromkeys(e.strip() for e in errors_raw.split("|") if e.strip()))[:3]
+                days_array.append({
+                    "date": day,
+                    "uptime_pct": pct,
+                    "down_count": d.get("down_count", 0),
+                    "total": d.get("total", 0),
+                    "errors": errors,
+                })
             else:
-                days_array.append({"date": day, "uptime_pct": None})
+                days_array.append({"date": day, "uptime_pct": None, "down_count": 0, "total": 0, "errors": []})
 
         current_status = "operational"
+        social_posts = []
         if status_info and status_info["status"] != "up":
             current_status = "major_outage"
             all_operational = False
+            social_posts = search_outage_chatter(
+                name, keywords=svc.get("social_keywords")
+            )
 
         services_data.append({
             "name": name,
             "status": current_status,
             "uptime_pct": uptime_pct,
             "response_time_ms": status_info["response_time_ms"] if status_info else None,
+            "error": status_info["error_message"] if status_info else None,
             "days": days_array,
+            "social_posts": social_posts,
         })
 
     return services_data, all_operational
@@ -127,15 +144,24 @@ def index():
         })
 
     all_operational = top_ok and groups_ok
-    incidents = get_recent_incidents(limit=20)
-    overall = "operational" if all_operational else "major_outage"
+    active_incidents = get_active_incidents()
+    past_incidents = get_recent_incidents(limit=20)
+
+    if active_incidents:
+        overall = "major_outage"
+    elif all_operational:
+        overall = "operational"
+    else:
+        overall = "major_outage"
 
     return render_template(
         "index.html",
         page=PAGE,
         services=services_data,
         groups=groups_data,
-        incidents=incidents,
+        active_incidents=active_incidents,
+        past_incidents=past_incidents,
+        incidents=past_incidents,
         overall=overall,
     )
 

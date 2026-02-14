@@ -90,6 +90,53 @@ header p {
 .status-dot.major_outage { background: var(--red); }
 .status-dot.maintenance { background: var(--blue); }
 
+/* Active incident banner (OpenAI style) */
+.active-incident-banner {
+    margin: 24px 0 0;
+    padding: 20px 24px;
+    background: #fdecea;
+    border: 1px solid #ef9a9a;
+    border-radius: 10px;
+}
+
+.active-incident-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #b71c1c;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 12px;
+}
+
+.active-incident {
+    padding: 12px 0;
+    border-top: 1px solid #ef9a9a;
+}
+
+.active-incident:first-of-type {
+    border-top: none;
+    padding-top: 0;
+}
+
+.active-incident-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #b71c1c;
+    margin-bottom: 4px;
+}
+
+.active-incident-desc {
+    font-size: 13px;
+    color: #4a1414;
+    line-height: 1.5;
+    margin-bottom: 6px;
+}
+
+.active-incident-meta {
+    font-size: 12px;
+    color: #87867F;
+}
+
 /* Service cards */
 .services {
     display: flex;
@@ -181,7 +228,9 @@ header p {
     padding: 6px 10px;
     border-radius: 6px;
     font-size: 12px;
-    white-space: nowrap;
+    white-space: normal;
+    max-width: 280px;
+    min-width: 140px;
     z-index: 10;
     pointer-events: none;
 }
@@ -190,12 +239,85 @@ header p {
     display: block;
 }
 
+.tooltip-error {
+    color: #ef9a9a;
+    font-family: var(--font-mono);
+    font-size: 11px;
+}
+
 .uptime-footer {
     display: flex;
     justify-content: space-between;
     font-size: 12px;
     color: var(--text-secondary);
     margin-top: 6px;
+}
+
+/* Service error message */
+.service-error {
+    margin-top: 8px;
+    padding: 6px 10px;
+    background: #fdecea;
+    color: #b71c1c;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: var(--font-mono);
+}
+
+/* Social chatter (shown when service is down) */
+.social-chatter {
+    margin-top: 12px;
+    padding: 10px 14px;
+    background: #f5f4f0;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+}
+
+.social-header {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 8px;
+}
+
+.social-post {
+    display: block;
+    padding: 6px 0;
+    font-size: 13px;
+    color: var(--text);
+    text-decoration: none;
+    border-bottom: 1px solid var(--border);
+    line-height: 1.4;
+}
+
+.social-post:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.social-post:hover {
+    color: var(--blue);
+}
+
+.social-source {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--border);
+    color: var(--text-secondary);
+    margin-right: 4px;
+    vertical-align: middle;
+}
+
+.social-score {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-left: 6px;
 }
 
 /* Service groups */

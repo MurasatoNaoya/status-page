@@ -63,3 +63,56 @@ groups:
         type: http
         url: "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration"
         interval: 120
+        social_keywords: ["azure outage", "azure down", "entra id down"]
+
+      # --- Private network DNS (uncomment when running inside your VNet) ---
+      # - name: "App DB (Private Link)"
+      #   type: dns
+      #   hostname: "mydb.privatelink.database.windows.net"
+      #   interval: 60
+      #   social_keywords: ["azure private link", "azure dns outage"]
+
+      # - name: "Storage (Private Endpoint)"
+      #   type: dns
+      #   hostname: "mystorage.privatelink.blob.core.windows.net"
+      #   interval: 60
+
+      # - name: "AKS API Server"
+      #   type: tcp
+      #   host: "myaks.uksouth.azmk8s.io"
+      #   port: 443
+      #   interval: 60
+
+  - name: "Container Registries"
+    services:
+      - name: "Docker Hub"
+        type: http
+        url: "https://registry-1.docker.io/v2/"
+        expected_status: 401
+        interval: 120
+        social_keywords: ["docker hub down", "docker hub outage", "dockerhub issues"]
+
+      - name: "GitHub Container Registry"
+        type: http
+        url: "https://ghcr.io/v2/"
+        expected_status: 401
+        interval: 120
+        social_keywords: ["ghcr down", "github packages outage"]
+
+      - name: "Red Hat Quay.io"
+        type: http
+        url: "https://quay.io/api/v1/discovery"
+        interval: 120
+        social_keywords: ["quay.io down", "red hat registry outage"]
+
+      - name: "Azure Container Registry"
+        type: dns
+        hostname: "azurecr.io"
+        interval: 120
+        social_keywords: ["azure container registry down", "acr outage"]
+
+      # - name: "Your Private ACR"
+      #   type: http
+      #   url: "https://yourregistry.azurecr.io/v2/"
+      #   expected_status: 401
+      #   interval: 60

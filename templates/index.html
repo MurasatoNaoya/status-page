@@ -13,10 +13,31 @@
             <p>{{ page.get('description', 'Service Status') }}</p>
         </header>
 
+        <!-- Active incident banner (OpenAI style) -->
+        {% if active_incidents %}
+        <div class="active-incident-banner">
+            <div class="active-incident-label">We're currently experiencing issues</div>
+            {% for inc in active_incidents %}
+            <div class="active-incident">
+                <div class="active-incident-title">{{ inc.title }}</div>
+                {% if inc.updates %}
+                <div class="active-incident-desc">{{ inc.updates[0].message }}</div>
+                <div class="active-incident-meta">
+                    <span class="incident-update-status {{ inc.status }}">{{ inc.status }}</span>
+                    &middot; Ongoing since {{ inc.created_at }}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
         <!-- Overall status banner -->
         <div class="overall-status {{ overall }}">
             <span class="status-dot {{ overall }}"></span>
-            {% if overall == 'operational' %}
+            {% if active_incidents %}
+                Incident In Progress
+            {% elif overall == 'operational' %}
                 All Systems Operational
             {% elif overall == 'degraded' %}
                 Degraded Performance
@@ -51,11 +72,17 @@
                     {% for day in svc.days %}
                     <div class="uptime-day {% if day.uptime_pct is none %}no-data{% elif day.uptime_pct == 100 %}up{% elif day.uptime_pct >= 95 %}degraded{% else %}down{% endif %}">
                         <div class="tooltip">
-                            {{ day.date }}<br>
+                            <strong>{{ day.date }}</strong><br>
                             {% if day.uptime_pct is none %}
                                 No data
                             {% else %}
                                 {{ day.uptime_pct | round(1) }}% uptime
+                                {% if day.down_count > 0 %}
+                                    <br>{{ day.down_count }}/{{ day.total }} checks failed
+                                    {% for err in day.errors %}
+                                        <br><span class="tooltip-error">{{ err[:80] }}</span>
+                                    {% endfor %}
+                                {% endif %}
                             {% endif %}
                         </div>
                     </div>
@@ -68,6 +95,24 @@
                     {% endif %}
                     <span>Today</span>
                 </div>
+
+                {% if svc.error %}
+                <div class="service-error">{{ svc.error }}</div>
+                {% endif %}
+
+                {% if svc.social_posts %}
+                <div class="social-chatter">
+                    <div class="social-header">Community Reports</div>
+                    {% for post in svc.social_posts[:3] %}
+                    <a href="{{ post.url }}" target="_blank" rel="noopener" class="social-post">
+                        <span class="social-source">{{ post.source }}</span>
+                        {% if post.subreddit %}r/{{ post.subreddit }} &middot;{% endif %}
+                        {{ post.title[:120] }}
+                        {% if post.score %}<span class="social-score">{{ post.score }} pts</span>{% endif %}
+                    </a>
+                    {% endfor %}
+                </div>
+                {% endif %}
             </div>
             {% endfor %}
         </div>

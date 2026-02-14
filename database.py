@@ -77,7 +77,13 @@ def get_uptime_days(service_name, days=90):
         rows = db.execute(
             """SELECT date(checked_at) as day,
                       COUNT(*) as total,
-                      SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END) as up_count
+                      SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END) as up_count,
+                      SUM(CASE WHEN status != 'up' THEN 1 ELSE 0 END) as down_count,
+                      GROUP_CONCAT(
+                          CASE WHEN status != 'up' AND error_message IS NOT NULL
+                               THEN error_message END,
+                          ' | '
+                      ) as errors
                FROM check_results
                WHERE service_name = ? AND checked_at >= ?
                GROUP BY day ORDER BY day""",
@@ -99,6 +105,24 @@ def get_uptime_percentage(service_name, days=90):
         if not row or row["total"] == 0:
             return None
         return round(100.0 * row["up_count"] / row["total"], 2)
+
+
+def get_active_incidents():
+    """Get unresolved incidents (investigating, identified, monitoring)."""
+    with get_db() as db:
+        incidents = db.execute(
+            "SELECT * FROM incidents WHERE resolved_at IS NULL ORDER BY created_at DESC"
+        ).fetchall()
+        result = []
+        for inc in incidents:
+            inc_dict = dict(inc)
+            updates = db.execute(
+                "SELECT * FROM incident_updates WHERE incident_id = ? ORDER BY created_at DESC",
+                (inc["id"],),
+            ).fetchall()
+            inc_dict["updates"] = [dict(u) for u in updates]
+            result.append(inc_dict)
+        return result
 
 
 def get_recent_incidents(limit=10):

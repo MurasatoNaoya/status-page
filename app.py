@@ -184,10 +184,16 @@ def index():
         group_svcs, group_operational = build_service_data(group.get("services", []), latest)
         if not group_operational:
             groups_ok = False
+
+        # Aggregate uptime: average across all services in the group
+        uptimes = [s["uptime_pct"] for s in group_svcs if s["uptime_pct"] is not None]
+        group_uptime = round(sum(uptimes) / len(uptimes), 2) if uptimes else None
+
         groups_data.append({
             "name": group["name"],
             "services": group_svcs,
             "operational": group_operational,
+            "uptime_pct": group_uptime,
         })
 
     all_operational = top_ok and groups_ok

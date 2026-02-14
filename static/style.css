@@ -455,6 +455,17 @@ details[open] > .group-header::before {
     flex: 1;
 }
 
+.group-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.group-uptime {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
 details[open] > .group-header + .services {
     border-top: none;
     border-radius: 0 0 10px 10px;

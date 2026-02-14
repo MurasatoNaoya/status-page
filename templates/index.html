@@ -171,9 +171,14 @@
             <details>
                 <summary class="group-header">
                     <span class="group-name">{{ group.name }}</span>
-                    <span class="service-badge {{ 'operational' if group.operational else 'major_outage' }}">
-                        {{ 'Operational' if group.operational else 'Issues Detected' }}
-                    </span>
+                    <div class="group-meta">
+                        {% if group.uptime_pct is not none %}
+                            <span class="group-uptime">{{ group.uptime_pct }}% uptime</span>
+                        {% endif %}
+                        <span class="service-badge {{ 'operational' if group.operational else 'major_outage' }}">
+                            {{ 'Operational' if group.operational else 'Issues Detected' }}
+                        </span>
+                    </div>
                 </summary>
                 <div class="services">
                     {% for svc in group.services %}

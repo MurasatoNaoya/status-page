@@ -83,7 +83,19 @@ groups:
       #   port: 443
       #   interval: 60
 
-  - name: "Container Registries"
+      - name: "Azure Container Registry"
+        type: dns
+        hostname: "azurecr.io"
+        interval: 120
+        social_keywords: ["azure container registry down", "acr outage"]
+
+      # - name: "Your Private ACR"
+      #   type: http
+      #   url: "https://yourregistry.azurecr.io/v2/"
+      #   expected_status: 401
+      #   interval: 60
+
+  - name: "Public Container Registries"
     services:
       - name: "Docker Hub"
         type: http
@@ -104,15 +116,3 @@ groups:
         url: "https://quay.io/api/v1/discovery"
         interval: 120
         social_keywords: ["quay.io down", "red hat registry outage"]
-
-      - name: "Azure Container Registry"
-        type: dns
-        hostname: "azurecr.io"
-        interval: 120
-        social_keywords: ["azure container registry down", "acr outage"]
-
-      # - name: "Your Private ACR"
-      #   type: http
-      #   url: "https://yourregistry.azurecr.io/v2/"
-      #   expected_status: 401
-      #   interval: 60

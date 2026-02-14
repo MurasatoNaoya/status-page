@@ -1,0 +1,30 @@
+page:
+  title: "Status"
+  description: "Service Status"
+
+services:
+  - name: "Example API"
+    type: http
+    url: "https://httpbin.org/status/200"
+    interval: 60
+
+  # - name: "My Blog"
+  #   type: http
+  #   url: "https://myblog.com"
+  #   interval: 60
+
+  # - name: "DNS Check"
+  #   type: dns
+  #   hostname: "example.com"
+  #   interval: 300
+
+  # - name: "Redis"
+  #   type: tcp
+  #   host: "localhost"
+  #   port: 6379
+  #   interval: 30
+
+  # - name: "Custom Check"
+  #   type: script
+  #   command: "/path/to/check.sh"
+  #   interval: 120

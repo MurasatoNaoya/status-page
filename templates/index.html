@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page.get('title', 'Status') }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>{{ page.get('title', 'Status') }}</h1>
+            <p>{{ page.get('description', 'Service Status') }}</p>
+        </header>
+
+        <!-- Overall status banner -->
+        <div class="overall-status {{ overall }}">
+            <span class="status-dot {{ overall }}"></span>
+            {% if overall == 'operational' %}
+                All Systems Operational
+            {% elif overall == 'degraded' %}
+                Degraded Performance
+            {% else %}
+                System Outage Detected
+            {% endif %}
+        </div>
+
+        <!-- Services -->
+        <div class="services">
+            {% for svc in services %}
+            <div class="service">
+                <div class="service-header">
+                    <span class="service-name">{{ svc.name }}</span>
+                    <div class="service-meta">
+                        {% if svc.uptime_pct is not none %}
+                            <span>{{ svc.uptime_pct }}% uptime</span>
+                        {% endif %}
+                        <span class="service-badge {{ svc.status }}">
+                            {% if svc.status == 'operational' %}Operational
+                            {% elif svc.status == 'degraded' %}Degraded
+                            {% elif svc.status == 'partial_outage' %}Partial Outage
+                            {% elif svc.status == 'major_outage' %}Major Outage
+                            {% else %}{{ svc.status }}
+                            {% endif %}
+                        </span>
+                    </div>
+                </div>
+
+                <!-- 90-day uptime bar -->
+                <div class="uptime-bar">
+                    {% for day in svc.days %}
+                    <div class="uptime-day {% if day.uptime_pct is none %}no-data{% elif day.uptime_pct == 100 %}up{% elif day.uptime_pct >= 95 %}degraded{% else %}down{% endif %}">
+                        <div class="tooltip">
+                            {{ day.date }}<br>
+                            {% if day.uptime_pct is none %}
+                                No data
+                            {% else %}
+                                {{ day.uptime_pct | round(1) }}% uptime
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="uptime-footer">
+                    <span>90 days ago</span>
+                    {% if svc.response_time_ms %}
+                        <span>{{ svc.response_time_ms | round(0) | int }}ms</span>
+                    {% endif %}
+                    <span>Today</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Incidents -->
+        <div class="incidents-section">
+            <h2>Past Incidents</h2>
+            {% if incidents %}
+                {% for incident in incidents %}
+                <div class="incident">
+                    <div class="incident-title">
+                        {{ incident.title }}
+                        <span class="incident-impact {{ incident.impact }}">{{ incident.impact }}</span>
+                    </div>
+                    {% for update in incident.updates %}
+                    <div class="incident-update">
+                        <span class="incident-update-status {{ update.status }}">{{ update.status }}</span>
+                        — {{ update.message }}
+                        <div class="incident-time">{{ update.created_at }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="no-incidents">
+                    No incidents reported.
+                </div>
+            {% endif %}
+        </div>
+
+        <footer>
+            Powered by status-page
+        </footer>
+    </div>
+</body>
+</html>

@@ -6,6 +6,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from flask import Flask, jsonify, render_template, request
 
 from checker import check_dns_bar, run_check
+import time
 from social import search_outage_chatter
 from database import (
     create_incident,
@@ -69,10 +70,25 @@ def all_services():
 
 
 def run_dns_bar_check():
-    """Run all DNS bar checks and cache results."""
+    """Run all DNS bar checks, cache results, and record aggregate to DB."""
     global _dns_bar_results
-    if DNS_BAR:
-        _dns_bar_results = check_dns_bar(DNS_BAR.get("targets", []))
+    if not DNS_BAR:
+        return
+    start = time.monotonic()
+    _dns_bar_results = check_dns_bar(DNS_BAR.get("targets", []))
+    elapsed_ms = (time.monotonic() - start) * 1000
+
+    total = len(_dns_bar_results)
+    failed = [r for r in _dns_bar_results if r["status"] != "up"]
+    failed_count = len(failed)
+
+    name = DNS_BAR.get("name", "DNS Resolution")
+    if failed_count == 0:
+        record_check(name, "up", elapsed_ms, None)
+    else:
+        failed_labels = ", ".join(r["label"] for r in failed)
+        error_msg = f"{failed_count}/{total} failed: {failed_labels}"
+        record_check(name, "down", elapsed_ms, error_msg)
 
 
 def start_scheduler():
@@ -178,17 +194,16 @@ def index():
     active_incidents = get_active_incidents()
     past_incidents = get_recent_incidents(limit=50)
 
-    # Check DNS bar health
+    # Build DNS bar as an aggregate service with 90-day uptime bar
     dns_bar_data = None
-    if DNS_BAR and _dns_bar_results:
-        all_dns_up = all(r["status"] == "up" for r in _dns_bar_results)
-        if not all_dns_up:
+    if DNS_BAR:
+        dns_name = DNS_BAR.get("name", "DNS Resolution")
+        dns_svc_list = [{"name": dns_name}]
+        dns_latest = get_latest_status([dns_name])
+        dns_services, dns_ok = build_service_data(dns_svc_list, dns_latest)
+        if not dns_ok:
             all_operational = False
-        dns_bar_data = {
-            "name": DNS_BAR.get("name", "DNS Resolution"),
-            "targets": _dns_bar_results,
-            "all_up": all_dns_up,
-        }
+        dns_bar_data = dns_services[0] if dns_services else None
 
     # Group past incidents by date
     incidents_by_date = {}

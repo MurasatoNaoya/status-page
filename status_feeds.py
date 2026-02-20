@@ -74,12 +74,16 @@ def poll_statuspage_api(feed_config):
                         }
                     )
 
+                # Map Statuspage.io's impact values to our scheme
+                _sp_impact = {"critical": "major", "major": "partial"}.get(
+                    inc.get("impact", "minor"), inc.get("impact", "minor")
+                )
                 results.append(
                     {
                         "services": list(affected_components),
                         "title": inc["name"],
                         "status": inc["status"],
-                        "impact": inc.get("impact", "minor"),
+                        "impact": _sp_impact,
                         "created_at": inc["created_at"],
                         "resolved_at": inc.get("resolved_at"),
                         "external_id": inc["id"],
@@ -242,12 +246,12 @@ def poll_azure_rss(feed_config):
                 w in combined_lower
                 for w in ["outage", "unavailable", "down", "loss of service"]
             ):
-                impact = "critical"
+                impact = "major"
             elif any(
                 w in combined_lower
                 for w in ["failure", "disruption", "unable", "errors", "not working"]
             ):
-                impact = "major"
+                impact = "partial"
             else:
                 impact = "minor"
 
@@ -454,9 +458,9 @@ def _parse_azure_history(html, exclude_regions=None):
         if any(
             w in combined for w in ["outage", "unavailable", "down", "loss of service"]
         ):
-            impact = "critical"
-        elif any(w in combined for w in ["failure", "disruption", "unable", "errors"]):
             impact = "major"
+        elif any(w in combined for w in ["failure", "disruption", "unable", "errors"]):
+            impact = "partial"
         else:
             impact = "minor"
 
@@ -523,8 +527,8 @@ def _parse_azure_history(html, exclude_regions=None):
 #
 # # Maps Azure eventLevel to our impact scale
 # _AZURE_LEVEL_TO_IMPACT = {
-#     "Critical": "critical",
-#     "Error": "major",
+#     "Critical": "major",
+#     "Error": "partial",
 #     "Warning": "minor",
 #     "Informational": "minor",
 # }
@@ -657,9 +661,9 @@ def _parse_azure_history(html, exclude_regions=None):
 def _statusio_code_to_impact(status_code):
     """Map Status.io status codes to our impact levels."""
     if status_code >= 500:
-        return "critical"
-    elif status_code >= 400:
         return "major"
+    elif status_code >= 400:
+        return "partial"
     elif status_code >= 300:
         return "minor"
     return "none"
@@ -692,10 +696,10 @@ def _should_scrape_history(feed_name):
 
 
 _STATUSIO_SEVERITY_TEXT_MAP = {
-    "full service disruption": "critical",
-    "service disruption": "critical",
-    "security issue": "critical",
-    "partial service disruption": "major",
+    "full service disruption": "major",
+    "service disruption": "major",
+    "security issue": "major",
+    "partial service disruption": "partial",
     "degraded performance": "minor",
     "operational": "none",
 }

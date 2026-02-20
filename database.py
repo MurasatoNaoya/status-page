@@ -8,6 +8,7 @@ DB_PATH = os.environ.get("STATUS_DB", "status.db")
 
 @contextmanager
 def get_db():
+    # timeout=30 acts as PRAGMA busy_timeout=30000 — waits up to 30s if DB is locked
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
@@ -71,6 +72,26 @@ def init_db():
             db.execute("SELECT external_id FROM incidents LIMIT 1")
         except sqlite3.OperationalError:
             db.execute("ALTER TABLE incidents ADD COLUMN external_id TEXT")
+        # Schema version tracking for one-time migrations
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                migration TEXT PRIMARY KEY,
+                applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            )
+        """)
+        # Migrate legacy impact values: "critical" -> "major", "major" -> "partial"
+        # Only run once — order matters to avoid critical->major->partial cascade
+        row = db.execute(
+            "SELECT 1 FROM schema_migrations WHERE migration = 'rename_impact_levels'"
+        ).fetchone()
+        if not row:
+            db.execute("UPDATE incidents SET impact = 'partial' WHERE impact = 'major'")
+            db.execute(
+                "UPDATE incidents SET impact = 'major' WHERE impact = 'critical'"
+            )
+            db.execute(
+                "INSERT INTO schema_migrations (migration) VALUES ('rename_impact_levels')"
+            )
 
 
 def record_check(service_name, status, response_time_ms, error_message=None):
@@ -243,9 +264,9 @@ def get_incident_downtime_hours(service_name, days=90):
                     pass
             # Fallback estimate when timestamps are missing/identical
             impact = row["impact"] or "minor"
-            if impact == "critical":
+            if impact == "major":
                 total_hours += 4.0
-            elif impact == "major":
+            elif impact == "partial":
                 total_hours += 2.0
             else:
                 total_hours += 1.0
@@ -477,6 +498,14 @@ def update_incident(incident_id, status, message, created_at=None, resolved_at=N
                     "UPDATE incidents SET resolved_at = COALESCE(resolved_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')) WHERE id = ?",
                     (incident_id,),
                 )
+
+
+def update_incident_impact(incident_id, impact):
+    """Update an incident's impact level (used when feeds re-classify)."""
+    with get_db() as db:
+        db.execute(
+            "UPDATE incidents SET impact = ? WHERE id = ?", (impact, incident_id)
+        )
 
 
 def backfill_check_gaps(service_names, days=90):

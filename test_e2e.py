@@ -149,10 +149,10 @@ class TestFilterPills:
 
     def test_impact_filter_shows_only_matching(self, page, live_server, seed_incidents):
         page.goto(live_server)
-        page.locator('.filter-pill[data-filter="critical"]').click()
+        page.locator('.filter-pill[data-filter="major"]').click()
         visible = page.locator(".incident:visible")
         for i in range(visible.count()):
-            assert visible.nth(i).get_attribute("data-impact") == "critical"
+            assert visible.nth(i).get_attribute("data-impact") == "major"
 
     def test_clicking_all_resets_filters(self, page, live_server, seed_incidents):
         page.goto(live_server)
@@ -408,7 +408,7 @@ class TestAdminIncidentManagement:
         # Accept the confirm dialog
         admin_session.on("dialog", lambda d: d.accept())
         admin_session.fill('input[name="title"]', "E2E Test Incident")
-        admin_session.select_option('select[name="impact"]', "critical")
+        admin_session.select_option('select[name="impact"]', "major")
         admin_session.fill('textarea[name="message"]', "Testing incident creation")
         admin_session.click(".btn-declare")
         # Should redirect back to admin with flash
@@ -420,7 +420,7 @@ class TestAdminIncidentManagement:
     ):
         admin_session.on("dialog", lambda d: d.accept())
         admin_session.fill('input[name="title"]', "Active Test Incident")
-        admin_session.select_option('select[name="impact"]', "major")
+        admin_session.select_option('select[name="impact"]', "partial")
         admin_session.fill('textarea[name="message"]', "Testing")
         admin_session.click(".btn-declare")
         admin_session.wait_for_url("**/admin")
@@ -467,7 +467,7 @@ class TestAdminIncidentManagement:
     ):
         admin_session.on("dialog", lambda d: d.accept())
         admin_session.fill('input[name="title"]', "Visible On Status Page")
-        admin_session.select_option('select[name="impact"]', "critical")
+        admin_session.select_option('select[name="impact"]', "major")
         admin_session.fill('textarea[name="message"]', "Major outage")
         admin_session.click(".btn-declare")
         admin_session.wait_for_url("**/admin")
@@ -671,7 +671,7 @@ class TestPerformanceAndLifecycle:
 
         # 1. Declare incident
         admin_session.fill('input[name="title"]', "Lifecycle Test")
-        admin_session.select_option('select[name="impact"]', "major")
+        admin_session.select_option('select[name="impact"]', "partial")
         admin_session.fill('textarea[name="message"]', "Investigating issue")
         admin_session.click(".btn-declare")
         admin_session.wait_for_url("**/admin")

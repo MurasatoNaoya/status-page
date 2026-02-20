@@ -257,8 +257,8 @@
                 <button class="filter-pill" data-filter="platform" onclick="toggleFilter(this)">Platform</button>
                 <span class="filter-divider"></span>
                 <button class="filter-pill filter-impact-minor" data-filter="minor" data-filter-type="impact" onclick="toggleFilter(this)">Minor</button>
+                <button class="filter-pill filter-impact-partial" data-filter="partial" data-filter-type="impact" onclick="toggleFilter(this)">Partial</button>
                 <button class="filter-pill filter-impact-major" data-filter="major" data-filter-type="impact" onclick="toggleFilter(this)">Major</button>
-                <button class="filter-pill filter-impact-critical" data-filter="critical" data-filter-type="impact" onclick="toggleFilter(this)">Critical</button>
             </div>
             {% if incidents_by_date %}
                 {% for date_label, date_incidents in incidents_by_date.items() %}
@@ -311,43 +311,8 @@
         </footer>
     </div>
     <div id="shared-tip"></div>
+    <script src="{{ url_for('static', filename='theme.js') }}"></script>
     <script>
-    // Theme toggle with smooth transition
-    var _themeStyle = null;
-    function toggleTheme() {
-        // Inject a style that forces ALL elements to transition at the same rate
-        if (!_themeStyle) {
-            _themeStyle = document.createElement('style');
-            _themeStyle.textContent = '*, *::before, *::after { transition: color 0.3s ease-out, background-color 0.3s ease-out, border-color 0.3s ease-out !important; }';
-            document.head.appendChild(_themeStyle);
-        }
-        // Flip theme
-        var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-        document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
-        localStorage.setItem('theme', isDark ? 'light' : 'dark');
-        // Remove transition style after animation completes so it doesn't interfere with hovers
-        clearTimeout(toggleTheme._timer);
-        toggleTheme._timer = setTimeout(function() {
-            if (_themeStyle && _themeStyle.parentNode) {
-                _themeStyle.parentNode.removeChild(_themeStyle);
-                _themeStyle = null;
-            }
-        }, 400);
-    }
-    // Set theme from localStorage (soft refresh keeps choice, hard refresh resets to light)
-    (function() {
-        var nav = performance.getEntriesByType('navigation')[0];
-        var isHardRefresh = nav && nav.type === 'reload';
-        if (isHardRefresh) {
-            localStorage.removeItem('theme');
-        } else {
-            var saved = localStorage.getItem('theme');
-            if (saved === 'dark') {
-                document.documentElement.setAttribute('data-theme', 'dark');
-            }
-        }
-    })();
-
     // Incident filters — category and impact work independently
     var activeCategoryFilter = 'all';
     var activeImpactFilter = null;
@@ -459,12 +424,15 @@
         // Reset to collapsed
         content.style.height = '0px';
         content.style.opacity = '0';
-        // Force reflow, then animate to measured height
+        // Force reflow, then animate — scale duration for large content
         content.offsetHeight;
-        content.style.transition = '';
+        var dur = Math.min(0.5, Math.max(0.25, h / 1500));
+        content.style.transition = 'height ' + dur + 's ease, opacity ' + dur + 's ease';
         content.style.height = h + 'px';
         content.style.opacity = '1';
-        function done() {
+        // Only listen for the height transition (the longer one) to avoid double-fire
+        function done(e) {
+            if (e.propertyName !== 'height') return;
             content.removeEventListener('transitionend', done);
             content.style.height = 'auto';
             content.classList.add('expanded');
@@ -478,16 +446,21 @@
         details._animating = true;
         var content = getContent(details);
         if (!content) { details._animating = false; return; }
+        // Lock height BEFORE changing overflow to prevent layout shift
+        var h = content.scrollHeight;
+        content.style.height = h + 'px';
+        content.style.overflow = 'hidden';
         content.classList.remove('expanded');
-        // Lock current height, then collapse
-        content.style.height = content.scrollHeight + 'px';
         content.style.transition = 'none';
-        content.offsetHeight;
-        content.style.transition = '';
+        content.offsetHeight; // force reflow with locked height
+        var dur = Math.min(0.4, Math.max(0.2, h / 1500));
+        content.style.transition = 'height ' + dur + 's ease, opacity ' + dur + 's ease';
         content.style.height = '0px';
         content.style.opacity = '0';
-        function done() {
+        function done(e) {
+            if (e.propertyName !== 'height') return;
             content.removeEventListener('transitionend', done);
+            content.style.overflow = '';
             details.removeAttribute('open');
             details._animating = false;
         }

@@ -55,8 +55,8 @@ def _send_slack(incident_id, title, impact, message, service):
         return
 
     emoji = {
-        "critical": ":rotating_light:",
-        "major": ":red_circle:",
+        "major": ":rotating_light:",
+        "partial": ":red_circle:",
         "minor": ":warning:",
     }.get(impact, ":warning:")
 
@@ -120,8 +120,8 @@ def _create_jira_ticket(incident_id, title, impact, message, service):
         return
 
     priority_map = {
-        "critical": "Highest",
-        "major": "High",
+        "major": "Highest",
+        "partial": "High",
         "minor": "Medium",
     }
 

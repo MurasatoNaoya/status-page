@@ -234,37 +234,6 @@
             </a>
         </footer>
     </div>
-    <script>
-    var _themeStyle = null;
-    function toggleTheme() {
-        if (!_themeStyle) {
-            _themeStyle = document.createElement('style');
-            _themeStyle.textContent = '*, *::before, *::after { transition: color 0.3s ease-out, background-color 0.3s ease-out, border-color 0.3s ease-out !important; }';
-            document.head.appendChild(_themeStyle);
-        }
-        var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-        document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
-        localStorage.setItem('theme', isDark ? 'light' : 'dark');
-        clearTimeout(toggleTheme._timer);
-        toggleTheme._timer = setTimeout(function() {
-            if (_themeStyle && _themeStyle.parentNode) {
-                _themeStyle.parentNode.removeChild(_themeStyle);
-                _themeStyle = null;
-            }
-        }, 400);
-    }
-    (function() {
-        var nav = performance.getEntriesByType('navigation')[0];
-        var isHardRefresh = nav && nav.type === 'reload';
-        if (isHardRefresh) {
-            localStorage.removeItem('theme');
-        } else {
-            var saved = localStorage.getItem('theme');
-            if (saved === 'dark') {
-                document.documentElement.setAttribute('data-theme', 'dark');
-            }
-        }
-    })();
-    </script>
+    <script src="{{ url_for('static', filename='theme.js') }}"></script>
 </body>
 </html>

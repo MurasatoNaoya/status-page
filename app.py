@@ -47,6 +47,7 @@ from database import (
     init_db,
     record_check,
     update_incident,
+    update_incident_impact,
 )
 
 # Number of consecutive failures before auto-creating an incident
@@ -273,7 +274,7 @@ def run_dns_bar_check():
         ):
             create_incident(
                 title="DNS Resolution Failures Detected",
-                impact="major",
+                impact="partial",
                 message=f"Automated detection: {error_msg}",
                 service_name=name,
             )
@@ -326,6 +327,10 @@ def poll_status_feed(feed_config):
                         svc_ext_id,
                         item["status"],
                     )
+                # Keep impact in sync with feed classification
+                new_impact = item.get("impact", "minor")
+                if existing["impact"] != new_impact:
+                    update_incident_impact(existing["id"], new_impact)
                 continue
 
             # Import new incident
@@ -454,8 +459,8 @@ def start_scheduler():
 
 
 _IMPACT_TO_SEVERITY = {
-    "critical": "major",
-    "major": "partial",
+    "major": "major",
+    "partial": "partial",
     "minor": "degraded",
     "none": "degraded",
 }
@@ -467,7 +472,7 @@ def _incident_severity(incidents):
         return None
     worst = max(
         incidents,
-        key=lambda i: {"critical": 3, "major": 2, "minor": 1}.get(
+        key=lambda i: {"major": 3, "partial": 2, "minor": 1}.get(
             i.get("impact", "minor"), 0
         ),
     )
@@ -584,9 +589,9 @@ def build_service_data(svc_list, latest, incidents_by_day=None, coverage_start=N
             active_inc = get_active_incident_for_service(name)
             if active_inc:
                 inc_impact = active_inc.get("impact", "minor")
-                if inc_impact == "critical":
+                if inc_impact == "major":
                     current_status = "major_outage"
-                elif inc_impact == "major":
+                elif inc_impact == "partial":
                     current_status = "partial_outage"
                 else:
                     current_status = "degraded"
@@ -757,14 +762,20 @@ def index():
     # (e.g. Azure PIRs create one row per affected service, but should
     # show as a single entry in the Past Incidents list).
     # Track alias IDs so click-to-scroll from per-service bars still works.
+    _impact_rank = {"major": 3, "partial": 2, "minor": 1, "none": 0}
     incidents_by_date = {}
     seen_base_ids = {}  # base_id → canonical incident dict
     for inc in past_incidents:
         ext_id = inc.get("external_id") or ""
         base_id = ext_id.rsplit(":", 1)[0] if ":" in ext_id else ext_id
         if base_id and base_id in seen_base_ids:
-            # Add this ID as an alias on the canonical incident
-            seen_base_ids[base_id].setdefault("alias_ids", []).append(inc["id"])
+            # Add this ID as an alias; promote impact if this copy is worse
+            canonical = seen_base_ids[base_id]
+            canonical.setdefault("alias_ids", []).append(inc["id"])
+            if _impact_rank.get(inc.get("impact"), 0) > _impact_rank.get(
+                canonical.get("impact"), 0
+            ):
+                canonical["impact"] = inc["impact"]
             continue
         if base_id:
             seen_base_ids[base_id] = inc
@@ -937,7 +948,7 @@ def admin_declare_incident():
         flash("Invalid form submission. Please try again.")
         return redirect(url_for("admin_panel"))
     title = request.form["title"]
-    impact = request.form.get("impact", "major")
+    impact = request.form.get("impact", "partial")
     message = request.form.get("message", "Investigating the issue.")
     service = request.form.get("service") or None
 

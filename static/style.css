@@ -753,8 +753,8 @@ details[open] .services.expanded {
 }
 
 .filter-impact-minor.active { background: var(--yellow); color: #fff; border-color: var(--yellow); }
-.filter-impact-major.active { background: var(--orange); color: #fff; border-color: var(--orange); }
-.filter-impact-critical.active { background: var(--red); color: #fff; border-color: var(--red); }
+.filter-impact-partial.active { background: var(--orange); color: #fff; border-color: var(--orange); }
+.filter-impact-major.active { background: var(--red); color: #fff; border-color: var(--red); }
 
 .incidents-section h2 {
     font-size: 20px;
@@ -868,8 +868,8 @@ details[open] .services.expanded {
 }
 
 .incident-impact.minor { background: var(--degraded-bg); color: var(--degraded-text); }
-.incident-impact.major { background: var(--partial-bg); color: var(--partial-text); }
-.incident-impact.critical { background: var(--incident-bg); color: var(--incident-text); }
+.incident-impact.partial { background: var(--partial-bg); color: var(--partial-text); }
+.incident-impact.major { background: var(--incident-bg); color: var(--incident-text); }
 
 .incident-update {
     margin-top: 10px;

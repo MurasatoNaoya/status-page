@@ -24,7 +24,7 @@ MOCK_INCIDENTS_JSON = {
             "id": "abc123",
             "name": "Incident with Actions",
             "status": "resolved",
-            "impact": "major",
+            "impact": "partial",
             "created_at": "2026-02-01T10:00:00Z",
             "resolved_at": "2026-02-01T12:00:00Z",
             "components": [{"name": "Actions"}],
@@ -210,9 +210,9 @@ class TestPollAzureRSS:
             mock_get.return_value = resp
             results = poll_azure_rss(feed)
 
-        # "outage" maps to "critical" (most severe keyword match)
+        # "outage" maps to "major" (most severe keyword match)
         outage_items = [r for r in results if "outage" in r["title"].lower()]
-        assert all(r["impact"] == "critical" for r in outage_items)
+        assert all(r["impact"] == "major" for r in outage_items)
 
     def test_handles_rss_error(self):
         feed = {

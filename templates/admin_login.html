@@ -116,19 +116,9 @@
         <button class="sso-btn" disabled>Sign in with Entra ID (SSO)</button>
         <div class="sso-hint">SSO requires AZURE_CLIENT_ID and AZURE_TENANT_ID env vars</div>
     </div>
-    <script>
-    (function() {
-        var nav = performance.getEntriesByType('navigation')[0];
-        var isHardRefresh = nav && nav.type === 'reload';
-        if (isHardRefresh) {
-            localStorage.removeItem('theme');
-        } else {
-            var saved = localStorage.getItem('theme');
-            if (saved === 'dark') {
-                document.documentElement.setAttribute('data-theme', 'dark');
-            }
-        }
-    })();
-    </script>
+    <div style="text-align: center; margin-top: 16px;">
+        <a href="{{ url_for('index') }}" style="color: var(--text-secondary); text-decoration: none; font-size: 12px;">&larr; Back to Status Page</a>
+    </div>
+    <script src="{{ url_for('static', filename='theme.js') }}"></script>
 </body>
 </html>

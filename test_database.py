@@ -30,6 +30,53 @@ class TestRecordAndQuery:
         assert latest["Svc"]["status"] == "up"
 
 
+class TestIncidentDowntimeHours:
+    def test_resolved_incident_uses_timestamps(self):
+        inc_id = database.create_incident(
+            title="Outage",
+            impact="partial",
+            message="down",
+            service_name="DtSvc",
+            external_id="dt-test-1",
+        )
+        # Manually set created_at and resolved_at 2 hours apart
+        with database.get_db() as db:
+            db.execute(
+                "UPDATE incidents SET created_at = '2025-01-01T10:00:00Z', "
+                "resolved_at = '2025-01-01T12:00:00Z' WHERE id = ?",
+                (inc_id,),
+            )
+            db.commit()
+        hours = database.get_incident_downtime_hours("DtSvc", days=3650)
+        assert hours == 2.0
+
+    def test_unresolved_incident_uses_fallback(self):
+        database.create_incident(
+            title="Ongoing",
+            impact="major",
+            message="down",
+            service_name="FallSvc",
+            external_id="dt-test-2",
+        )
+        hours = database.get_incident_downtime_hours("FallSvc", days=3650)
+        assert hours == 4.0  # major fallback
+
+    def test_minor_fallback(self):
+        database.create_incident(
+            title="Blip",
+            impact="minor",
+            message="hiccup",
+            service_name="MinSvc",
+            external_id="dt-test-3",
+        )
+        hours = database.get_incident_downtime_hours("MinSvc", days=3650)
+        assert hours == 1.0  # minor fallback
+
+    def test_no_incidents_returns_zero(self):
+        hours = database.get_incident_downtime_hours("EmptySvc")
+        assert hours == 0.0
+
+
 class TestUptimeCalculation:
     def test_uptime_percentage_requires_minimum_checks(self):
         # Need at least 24 checks to get a percentage
@@ -67,14 +114,14 @@ class TestUptimeCalculation:
 class TestIncidents:
     def test_create_incident(self):
         inc_id = database.create_incident(
-            title="Test Outage", impact="major", message="Investigating"
+            title="Test Outage", impact="partial", message="Investigating"
         )
         assert inc_id > 0
 
     def test_create_incident_with_service(self):
         database.create_incident(
             title="GitHub Down",
-            impact="major",
+            impact="partial",
             message="Investigating",
             service_name="GitHub API",
         )
@@ -84,7 +131,7 @@ class TestIncidents:
 
     def test_get_active_incidents(self):
         database.create_incident(title="Active1", impact="minor", message="msg1")
-        database.create_incident(title="Active2", impact="major", message="msg2")
+        database.create_incident(title="Active2", impact="partial", message="msg2")
         active = database.get_active_incidents()
         assert len(active) == 2
         titles = {a["title"] for a in active}
@@ -92,7 +139,7 @@ class TestIncidents:
 
     def test_incident_updates(self):
         inc_id = database.create_incident(
-            title="Outage", impact="major", message="Investigating the issue"
+            title="Outage", impact="partial", message="Investigating the issue"
         )
         database.update_incident(inc_id, status="identified", message="Found the cause")
         database.update_incident(inc_id, status="resolved", message="Fixed")

@@ -145,12 +145,12 @@ def seed_incidents(live_server, page):
     incidents = [
         {
             "title": "AKS cluster issue",
-            "impact": "critical",
+            "impact": "major",
             "service_name": "Azure Kubernetes Service (AKS)",
         },
         {
             "title": "GitHub Actions degraded",
-            "impact": "major",
+            "impact": "partial",
             "service_name": "GitHub Actions",
         },
         {
@@ -160,10 +160,14 @@ def seed_incidents(live_server, page):
         },
         {
             "title": "Azure Portal outage",
-            "impact": "critical",
+            "impact": "major",
             "service_name": "Azure Portal",
         },
-        {"title": "GitHub API errors", "impact": "major", "service_name": "github.com"},
+        {
+            "title": "GitHub API errors",
+            "impact": "partial",
+            "service_name": "github.com",
+        },
     ]
     for inc in incidents:
         resp = page.request.post(

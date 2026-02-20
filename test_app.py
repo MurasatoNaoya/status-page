@@ -47,27 +47,21 @@ class TestIndexPage:
 
 
 class TestThemeToggleJS:
-    """Verify the dark/light mode JavaScript is correct."""
+    """Verify the shared theme JS is loaded on pages."""
 
-    def test_theme_transition_uses_wildcard(self, app_client):
+    def test_index_loads_theme_js(self, app_client):
         resp = app_client.get("/")
         html = resp.data.decode()
-        assert "*, *::before, *::after" in html
+        assert "/static/theme.js" in html
 
-    def test_theme_stored_in_localstorage(self, app_client):
-        resp = app_client.get("/")
-        html = resp.data.decode()
-        assert "localStorage.setItem('theme'" in html
-
-    def test_hard_refresh_resets_theme(self, app_client):
-        resp = app_client.get("/")
-        html = resp.data.decode()
-        assert "localStorage.removeItem('theme')" in html
-
-    def test_transition_removed_after_animation(self, app_client):
-        resp = app_client.get("/")
-        html = resp.data.decode()
-        assert "removeChild(_themeStyle)" in html
+    def test_theme_js_serves(self, app_client):
+        resp = app_client.get("/static/theme.js")
+        assert resp.status_code == 200
+        js = resp.data.decode()
+        assert "toggleTheme" in js
+        assert "localStorage.setItem" in js
+        assert "prefers-color-scheme" in js
+        assert "removeChild(_themeStyle)" in js
 
 
 class TestAPIRoutes:
@@ -82,7 +76,7 @@ class TestAPIRoutes:
             "/api/incidents",
             json={
                 "title": "Test Incident",
-                "impact": "major",
+                "impact": "partial",
                 "message": "Testing",
             },
         )
@@ -101,7 +95,7 @@ class TestAPIRoutes:
             "/api/incidents",
             json={
                 "title": "Test Incident",
-                "impact": "major",
+                "impact": "partial",
                 "message": "Testing",
             },
         )
@@ -232,7 +226,7 @@ class TestIncidentAutoDetection:
         # Create an active incident
         database.create_incident(
             title="RecoverSvc Outage",
-            impact="major",
+            impact="partial",
             message="down",
             service_name="RecoverSvc",
         )
@@ -255,15 +249,15 @@ class TestIncidentSeverity:
 
         assert _incident_severity([]) is None
 
-    def test_critical_incident(self):
-        from app import _incident_severity
-
-        assert _incident_severity([{"impact": "critical"}]) == "major"
-
     def test_major_incident(self):
         from app import _incident_severity
 
-        assert _incident_severity([{"impact": "major"}]) == "partial"
+        assert _incident_severity([{"impact": "major"}]) == "major"
+
+    def test_partial_incident(self):
+        from app import _incident_severity
+
+        assert _incident_severity([{"impact": "partial"}]) == "partial"
 
     def test_minor_incident(self):
         from app import _incident_severity
@@ -511,8 +505,8 @@ class TestBuildServiceData:
         assert today_bar["downtime_mins"] == 25
         assert today_bar["downtime_hours"] == 0
 
-    def test_severity_from_incident_impact_critical(self):
-        """Critical incidents should produce 'major' severity (red bar)."""
+    def test_severity_from_incident_impact_major(self):
+        """Major incidents should produce 'major' severity (red bar)."""
         from app import build_service_data
         from database import get_db
 
@@ -531,8 +525,8 @@ class TestBuildServiceData:
                 {
                     "id": 42,
                     "service_name": "CritSvc",
-                    "title": "Critical outage",
-                    "impact": "critical",
+                    "title": "Major outage",
+                    "impact": "major",
                 }
             ]
         }
@@ -544,8 +538,8 @@ class TestBuildServiceData:
         assert today_bar["severity"] == "major"
         assert today_bar["down_count"] == 0
 
-    def test_severity_from_incident_impact_major(self):
-        """Major incidents should produce 'partial' severity (orange bar)."""
+    def test_severity_from_incident_impact_partial(self):
+        """Partial incidents should produce 'partial' severity (orange bar)."""
         from app import build_service_data
         from database import get_db
 
@@ -564,8 +558,8 @@ class TestBuildServiceData:
                 {
                     "id": 43,
                     "service_name": "MajSvc",
-                    "title": "Major outage",
-                    "impact": "major",
+                    "title": "Partial outage",
+                    "impact": "partial",
                 }
             ]
         }
@@ -780,7 +774,7 @@ class TestBarCoverage:
                     "id": 10,
                     "service_name": "IncSvc",
                     "title": "Feed outage",
-                    "impact": "major",
+                    "impact": "partial",
                 }
             ]
         }
@@ -790,7 +784,7 @@ class TestBarCoverage:
             [{"name": "IncSvc", "interval": 60}], latest, incidents_by_day, coverage
         )
         today_bar = data[0]["days"][-1]
-        assert today_bar["severity"] == "partial"  # major → partial (orange)
+        assert today_bar["severity"] == "partial"  # partial → partial (orange)
         assert today_bar["down_count"] == 0  # checks were all UP
 
     def test_bar_green_when_checks_pass_and_no_incidents(self):
@@ -1138,7 +1132,7 @@ class TestPollStatusioAPI:
         assert inc["title"] == "Registry outage"
         assert inc["external_id"] == "abc123"
         assert inc["services"] == ["Docker Hub"]
-        assert inc["impact"] == "critical"  # status 500 = critical
+        assert inc["impact"] == "major"  # status 500 = major
         assert inc["status"] == "investigating"  # not closed
         assert len(inc["updates"]) == 1
 
@@ -1191,9 +1185,9 @@ class TestPollStatusioAPI:
 
         assert _statusio_code_to_impact(100) == "none"
         assert _statusio_code_to_impact(300) == "minor"
-        assert _statusio_code_to_impact(400) == "major"
-        assert _statusio_code_to_impact(500) == "critical"
-        assert _statusio_code_to_impact(600) == "critical"
+        assert _statusio_code_to_impact(400) == "partial"
+        assert _statusio_code_to_impact(500) == "major"
+        assert _statusio_code_to_impact(600) == "major"
 
     def test_returns_component_status(self):
         from status_feeds import poll_statusio_api
@@ -1349,7 +1343,9 @@ class TestScrapeStatusioHistory:
                 "Docker Hub Registry": "Docker Hub",
             },
         )
-        assert incidents[0]["impact"] == "major"  # Partial Service Disruption = major
+        assert (
+            incidents[0]["impact"] == "partial"
+        )  # Partial Service Disruption = partial
 
     def test_parses_updates_newest_first(self):
         from status_feeds import _parse_statusio_history
@@ -1389,7 +1385,7 @@ class TestPollStatusFeed:
                 "external_id": "test-multi-svc",
                 "title": "Multi-service outage",
                 "status": "resolved",
-                "impact": "major",
+                "impact": "partial",
                 "services": ["ServiceA", "ServiceB", "ServiceC"],
                 "created_at": "2026-02-14T10:00:00Z",
                 "resolved_at": "2026-02-14T12:00:00Z",

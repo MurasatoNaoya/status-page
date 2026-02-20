@@ -1,0 +1,4 @@
+[tool.pytest.ini_options]
+markers = [
+    "e2e: End-to-end browser tests (require live server)",
+]

@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .login-card {
+            max-width: 360px;
+            margin: 120px auto;
+            padding: 32px;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+        }
+        .login-card h2 {
+            font-size: 18px;
+            margin-bottom: 20px;
+        }
+        .login-card label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 4px;
+            color: var(--text-secondary);
+        }
+        .login-card input[type="text"],
+        .login-card input[type="password"] {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 14px;
+            margin-bottom: 16px;
+            font-family: inherit;
+            background: var(--bg);
+            color: var(--text);
+        }
+        .login-card button {
+            width: 100%;
+            padding: 10px;
+            background: var(--text);
+            color: var(--bg);
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .login-card button:hover { opacity: 0.9; }
+        .flash-error {
+            background: #fdecea;
+            color: #b71c1c;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            margin-bottom: 16px;
+        }
+        .sso-divider {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 12px;
+            margin: 16px 0;
+            position: relative;
+        }
+        .sso-divider::before, .sso-divider::after {
+            content: "";
+            position: absolute;
+            top: 50%;
+            width: 40%;
+            height: 1px;
+            background: var(--border);
+        }
+        .sso-divider::before { left: 0; }
+        .sso-divider::after { right: 0; }
+        .sso-btn {
+            width: 100%;
+            padding: 10px;
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: not-allowed;
+            opacity: 0.5;
+            font-family: inherit;
+        }
+        .sso-hint {
+            text-align: center;
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 6px;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <h2>Admin Login</h2>
+        {% with messages = get_flashed_messages() %}
+            {% for msg in messages %}
+            <div class="flash-error">{{ msg }}</div>
+            {% endfor %}
+        {% endwith %}
+        <form method="POST">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" required autofocus>
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required>
+            <button type="submit">Sign In</button>
+        </form>
+        <div class="sso-divider">or</div>
+        <button class="sso-btn" disabled>Sign in with Entra ID (SSO)</button>
+        <div class="sso-hint">SSO requires AZURE_CLIENT_ID and AZURE_TENANT_ID env vars</div>
+    </div>
+    <script>
+    (function() {
+        var nav = performance.getEntriesByType('navigation')[0];
+        var isHardRefresh = nav && nav.type === 'reload';
+        if (isHardRefresh) {
+            localStorage.removeItem('theme');
+        } else {
+            var saved = localStorage.getItem('theme');
+            if (saved === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        }
+    })();
+    </script>
+</body>
+</html>

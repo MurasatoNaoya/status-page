@@ -1,3 +1,5 @@
+import os
+import shlex
 import socket
 import subprocess
 import time
@@ -10,11 +12,20 @@ def check_http(service):
     url = service["url"]
     timeout = service.get("timeout", 10)
     expected_status = service.get("expected_status", 200)
+    headers = {}
+    token_env = service.get("auth_token_env")
+    if token_env:
+        token = os.environ.get(token_env)
+        if token:
+            headers["Authorization"] = f"token {token}"
     try:
         start = time.monotonic()
-        resp = requests.get(url, timeout=timeout, allow_redirects=True)
+        resp = requests.get(url, timeout=timeout, allow_redirects=True, headers=headers)
         elapsed_ms = (time.monotonic() - start) * 1000
         if resp.status_code == expected_status:
+            return "up", elapsed_ms, None
+        # Treat rate limits as "up" — the service is working, we're just throttled
+        if resp.status_code in (403, 429) and "rate limit" in resp.text.lower():
             return "up", elapsed_ms, None
         return "down", elapsed_ms, f"HTTP {resp.status_code}"
     except requests.RequestException as e:
@@ -51,8 +62,9 @@ def check_script(service):
     timeout = service.get("timeout", 30)
     try:
         start = time.monotonic()
+        args = shlex.split(command) if isinstance(command, str) else command
         result = subprocess.run(
-            command, shell=True, capture_output=True, text=True, timeout=timeout
+            args, capture_output=True, text=True, timeout=timeout
         )
         elapsed_ms = (time.monotonic() - start) * 1000
         if result.returncode == 0:

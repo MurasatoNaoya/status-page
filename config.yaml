@@ -2,6 +2,71 @@ page:
   title: "Status"
   description: "Service Status"
 
+# External status page APIs to poll for real incidents
+status_feeds:
+  - name: "GitHub"
+    url: "https://www.githubstatus.com/api/v2"
+    components:
+      "Actions": "GitHub Actions"
+      "Git Operations": "GitHub Web Pages (github.com)"
+      "API Requests": "GitHub API"
+      "Copilot": "GitHub Copilot"
+    interval: 300
+
+  - name: "Red Hat"
+    url: "https://status.redhat.com/api/v2"
+    components:
+      "Quay.io": "Red Hat Quay.io"
+    interval: 300
+
+  - name: "Docker"
+    type: statusio
+    url: "https://api.status.io/1.0/status/533c6539221ae15e3f000031"
+    history_url: "https://www.dockerstatus.com/pages/history/533c6539221ae15e3f000031"
+    components:
+      "Docker Hub Registry": "Docker Hub"
+      "Docker Authentication": "Docker Hub"
+      "Docker Hub Web Services": "Docker Hub"
+    interval: 300
+
+  - name: "Azure"
+    type: azure_rss
+    url: "https://azure.status.microsoft/en-us/status/feed/"
+    history_url: "https://azure.status.microsoft/en-us/status/history/"
+    # Only import incidents that are global or mention UK South
+    # Skip incidents specific to other regions (West US, East US, etc.)
+    exclude_regions: ["West US", "East US", "West Europe", "North Europe", "Southeast Asia", "East Asia", "Central US", "South Central US", "West US 2", "West US 3", "Government", "China"]
+    # Services covered by this feed (used for bar coverage — green vs grey)
+    covered_services:
+      - "Azure Kubernetes Service (AKS)"
+      - "Azure Container Registry (ACR)"
+      - "Azure AD / Entra ID"
+      - "Azure Portal"
+      - "Azure ARM API"
+      - "Azure Blob Storage (UK South)"
+      - "Azure SQL (UK South)"
+    interval: 300
+
+  # --- Azure Service Health API (replaces RSS feed above) ---
+  # Gives proper severity, lifecycle updates, and region-filtered incidents.
+  # Incidents are region-based (not subscription-based), so you only need
+  # ONE subscription to authenticate — any sub in your tenant will do.
+  # The same "UK South" incidents appear regardless of which sub you query.
+  #
+  # Prerequisites:
+  #   1. pip install azure-identity
+  #   2. Create SPN with Reader on any one subscription:
+  #        az ad sp create-for-rbac --name "status-page-reader" \
+  #          --role Reader --scopes /subscriptions/<ANY_SUBSCRIPTION_ID>
+  #   3. Set env vars: AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET
+  # To enable: comment out the azure_rss feed above and uncomment this block.
+  #
+  # - name: "Azure"
+  #   type: azure_service_health
+  #   subscription_id: "<any-subscription-id>"
+  #   region: "UK South"
+  #   interval: 300
+
 dns_bar:
   name: "DNS Resolution"
   interval: 60
@@ -20,6 +85,8 @@ dns_bar:
       label: "Docker Hub"
     - hostname: "ghcr.io"
       label: "GHCR"
+    - hostname: "api.github.com"
+      label: "GitHub API"
     - hostname: "mcr.microsoft.com"
       label: "AKS/MCR"
     # --- Uncomment for private network targets ---
@@ -28,11 +95,11 @@ dns_bar:
     # - hostname: "myaks.uksouth.azmk8s.io"
     #   label: "Your AKS Cluster"
 
-services:
-  - name: "Example API"
-    type: http
-    url: "https://httpbin.org/status/200"
-    interval: 60
+services: []
+  # - name: "Example API"
+  #   type: http
+  #   url: "https://httpbin.org/status/200"
+  #   interval: 300
 
   # - name: "My Blog"
   #   type: http
@@ -56,47 +123,48 @@ services:
   #   interval: 120
 
 groups:
-  - name: "Azure UK South"
+  - name: "Azure (UK South)"
     services:
-      - name: "Azure Status (UK South)"
-        type: azure_status
-        region: "UK South"
-        interval: 300
+      - name: "Azure Kubernetes Service (AKS)"
+        type: http
+        url: "https://mcr.microsoft.com/v2/"
+        expected_status: 200
+        interval: 60
+        social_keywords: ["aks outage", "azure kubernetes down", "aks down"]
+
+      - name: "Azure Container Registry (ACR)"
+        type: dns
+        hostname: "azurecr.io"
+        interval: 60
+        social_keywords: ["azure container registry down", "acr outage"]
+
+      - name: "Azure AD / Entra ID"
+        type: http
+        url: "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration"
+        interval: 60
+        social_keywords: ["azure outage", "azure down", "entra id down"]
 
       - name: "Azure Portal"
         type: http
         url: "https://portal.azure.com"
         expected_status: 200
-        interval: 120
+        interval: 60
 
       - name: "Azure ARM API"
         type: http
         url: "https://management.azure.com/subscriptions?api-version=2020-01-01"
         expected_status: 401
-        interval: 120
+        interval: 60
 
       - name: "Azure Blob Storage (UK South)"
         type: dns
         hostname: "uksouth.blob.core.windows.net"
-        interval: 120
+        interval: 60
 
       - name: "Azure SQL (UK South)"
         type: dns
         hostname: "uksouth.database.windows.net"
-        interval: 120
-
-      - name: "Azure AD / Entra ID"
-        type: http
-        url: "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration"
-        interval: 120
-        social_keywords: ["azure outage", "azure down", "entra id down"]
-
-      - name: "AKS / Microsoft Container Registry"
-        type: http
-        url: "https://mcr.microsoft.com/v2/"
-        expected_status: 200
-        interval: 120
-        social_keywords: ["aks outage", "azure kubernetes down", "aks down", "mcr down"]
+        interval: 60
 
       # --- Private network (uncomment when running inside your VNet) ---
       # - name: "App DB (Private Link)"
@@ -115,17 +183,47 @@ groups:
       #   port: 443
       #   interval: 60
 
-      - name: "Azure Container Registry"
-        type: dns
-        hostname: "azurecr.io"
-        interval: 120
-        social_keywords: ["azure container registry down", "acr outage"]
-
       # - name: "Your Private ACR"
       #   type: http
       #   url: "https://yourregistry.azurecr.io/v2/"
       #   expected_status: 401
       #   interval: 60
+
+  - name: "GitHub"
+    services:
+      - name: "GitHub Web Pages (github.com)"
+        type: http
+        url: "https://github.com"
+        expected_status: 200
+        interval: 300
+        social_keywords: ["github down", "github website down"]
+
+      # auth_token_env: uses GITHUB_TOKEN env var for authenticated API calls (5k req/hr)
+      # Personal: GITHUB_TOKEN=$(gh auth token)
+      # Company: use a GitHub service account PAT instead
+      - name: "GitHub API"
+        type: http
+        url: "https://api.github.com"
+        expected_status: 200
+        interval: 300
+        auth_token_env: "GITHUB_TOKEN"
+        social_keywords: ["github down", "github outage", "github api down"]
+
+      - name: "GitHub Actions"
+        type: http
+        url: "https://api.github.com/meta"
+        expected_status: 200
+        interval: 300
+        auth_token_env: "GITHUB_TOKEN"
+        social_keywords: ["github actions down", "github actions outage"]
+
+      - name: "GitHub Copilot"
+        type: http
+        url: "https://api.github.com/meta"
+        expected_status: 200
+        interval: 300
+        auth_token_env: "GITHUB_TOKEN"
+        social_keywords: ["github copilot down", "copilot outage", "copilot not working"]
 
   - name: "Public Container Registries"
     services:
@@ -133,18 +231,11 @@ groups:
         type: http
         url: "https://registry-1.docker.io/v2/"
         expected_status: 401
-        interval: 120
+        interval: 300
         social_keywords: ["docker hub down", "docker hub outage", "dockerhub issues"]
-
-      - name: "GitHub Container Registry"
-        type: http
-        url: "https://ghcr.io/v2/"
-        expected_status: 401
-        interval: 120
-        social_keywords: ["ghcr down", "github packages outage"]
 
       - name: "Red Hat Quay.io"
         type: http
         url: "https://quay.io/api/v1/discovery"
-        interval: 120
+        interval: 300
         social_keywords: ["quay.io down", "red hat registry outage"]

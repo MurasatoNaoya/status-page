@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .admin-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 24px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .admin-header h1 { font-size: 20px; font-weight: 600; }
+        .admin-nav { display: flex; gap: 12px; align-items: center; }
+        .admin-nav a {
+            font-size: 13px;
+            color: var(--text-secondary);
+            text-decoration: none;
+        }
+        .admin-nav a:hover { color: var(--text); }
+
+        .flash-msg {
+            margin: 16px 0;
+            padding: 10px 14px;
+            background: var(--green-bg, #f0f7e6);
+            color: var(--green, #3d6b0a);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 13px;
+        }
+
+        /* Declare incident */
+        .declare-section {
+            margin: 32px 0;
+            padding: 24px;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+        }
+        .declare-section h2 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+        .form-row {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .form-group {
+            flex: 1;
+        }
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+            background: var(--bg);
+            color: var(--text);
+        }
+        .form-group textarea { resize: vertical; min-height: 60px; }
+
+        .btn-declare {
+            padding: 12px 32px;
+            background: #b71c1c;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+            letter-spacing: 0.02em;
+            margin-top: 8px;
+            transition: background 0.15s;
+        }
+        .btn-declare:hover { background: #8e1515; }
+        .btn-declare:active { transform: scale(0.98); }
+
+        .declare-warning {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 8px;
+        }
+        .declare-warning strong { color: #b71c1c; }
+
+        /* Active incidents management */
+        .incidents-mgmt {
+            margin: 32px 0;
+        }
+        .incidents-mgmt h2 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+        .mgmt-incident {
+            padding: 16px 20px;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin-bottom: 12px;
+        }
+        .mgmt-incident-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .mgmt-incident-title {
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .mgmt-update-form {
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+        }
+        .mgmt-update-form select, .mgmt-update-form input {
+            padding: 6px 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 13px;
+            font-family: inherit;
+            background: var(--bg);
+            color: var(--text);
+        }
+        .mgmt-update-form input { flex: 1; }
+        .btn-update {
+            padding: 6px 16px;
+            background: var(--text);
+            color: var(--bg);
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            font-family: inherit;
+            white-space: nowrap;
+        }
+        .btn-resolve {
+            padding: 6px 16px;
+            background: var(--green);
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            font-family: inherit;
+            white-space: nowrap;
+        }
+
+        .no-active { color: var(--text-secondary); font-size: 14px; }
+
+        /* Integration status */
+        .integrations {
+            margin: 32px 0;
+            padding: 20px;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+        }
+        .integrations h3 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+        .integration-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 0;
+            font-size: 13px;
+            border-bottom: 1px solid var(--border);
+        }
+        .integration-row:last-child { border-bottom: none; }
+        .int-status {
+            font-size: 11px;
+            font-weight: 500;
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+        .int-status.configured { background: var(--green-bg, #f0f7e6); color: var(--green, #3d6b0a); }
+        .int-status.not-configured { background: var(--card-bg); color: var(--text-secondary); border: 1px solid var(--border); }
+
+        /* Data backfill */
+        .backfill-section {
+            margin: 32px 0;
+            padding: 24px;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+        }
+        .backfill-section h2 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .backfill-desc {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+            line-height: 1.5;
+        }
+        .btn-backfill {
+            padding: 10px 24px;
+            background: #1565c0;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+            letter-spacing: 0.02em;
+            transition: background 0.15s;
+        }
+        .btn-backfill:hover { background: #0d47a1; }
+        .btn-backfill:active { transform: scale(0.98); }
+        .backfill-coverage {
+            margin-top: 20px;
+        }
+        .backfill-coverage h3 {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            margin-bottom: 8px;
+        }
+        .backfill-coverage-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 0;
+            font-size: 13px;
+            border-bottom: 1px solid var(--border);
+        }
+        .backfill-coverage-row:last-child { border-bottom: none; }
+        .backfill-feed-name { font-weight: 500; }
+        .backfill-feed-detail {
+            color: var(--text-secondary);
+            text-align: right;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="admin-header">
+            <h1>Admin Panel</h1>
+            <div class="admin-nav">
+                <a href="{{ url_for('admin_metrics') }}">Metrics</a>
+                <a href="{{ url_for('index') }}">View Status Page</a>
+                <a href="{{ url_for('admin_logout') }}">Logout</a>
+                <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode">
+                    <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                    <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                </button>
+            </div>
+        </div>
+
+        {% with messages = get_flashed_messages() %}
+            {% for msg in messages %}
+            <div class="flash-msg">{{ msg }}</div>
+            {% endfor %}
+        {% endwith %}
+
+        <!-- Declare Incident -->
+        <div class="declare-section">
+            <h2>Declare Incident</h2>
+            <form method="POST" action="{{ url_for('admin_declare_incident') }}" onsubmit="return confirm('This will alert the team and create a Jira ticket. Continue?')">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Incident Title</label>
+                        <input type="text" name="title" placeholder="e.g. AKS cluster unreachable" required>
+                    </div>
+                    <div class="form-group" style="max-width: 160px;">
+                        <label>Impact</label>
+                        <select name="impact">
+                            <option value="critical">Critical</option>
+                            <option value="major" selected>Major</option>
+                            <option value="minor">Minor</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Affected Service</label>
+                        <select name="service">
+                            <option value="">All / Multiple</option>
+                            {% for svc in services %}
+                            <option value="{{ svc }}">{{ svc }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Initial Message</label>
+                    <textarea name="message" placeholder="Investigating the issue...">Investigating the issue.</textarea>
+                </div>
+                <button type="submit" class="btn-declare">Declare Incident</button>
+                <div class="declare-warning">
+                    <strong>This will:</strong> Create an incident on the status page, send a Slack/Teams alert, and create a Jira ticket (if configured).
+                </div>
+            </form>
+        </div>
+
+        <!-- Active Incidents -->
+        <div class="incidents-mgmt">
+            <h2>Active Incidents</h2>
+            {% if active_incidents %}
+                {% for inc in active_incidents %}
+                <div class="mgmt-incident">
+                    <div class="mgmt-incident-header">
+                        <span class="mgmt-incident-title">
+                            {{ inc.title }}
+                            <span class="incident-impact {{ inc.impact }}">{{ inc.impact }}</span>
+                        </span>
+                        <span style="font-size: 12px; color: var(--text-secondary);">
+                            Since {{ inc.created_at | gmt }}
+                        </span>
+                    </div>
+                    <form method="POST" action="{{ url_for('admin_update_incident', incident_id=inc.id) }}" class="mgmt-update-form">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                        <select name="status">
+                            <option value="investigating">Investigating</option>
+                            <option value="identified">Identified</option>
+                            <option value="monitoring">Monitoring</option>
+                            <option value="resolved">Resolved</option>
+                        </select>
+                        <input type="text" name="message" placeholder="Update message..." required>
+                        <button type="submit" class="btn-update">Update</button>
+                    </form>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p class="no-active">No active incidents.</p>
+            {% endif %}
+        </div>
+
+        <!-- Data Backfill -->
+        <div class="backfill-section">
+            <h2>Data Backfill</h2>
+            <p class="backfill-desc">
+                Pull real historical incident data from public status feeds (GitHub, Azure, Docker, Red Hat).
+                Only imports real incidents &mdash; does not create synthetic data. Existing data is preserved.
+            </p>
+            <form method="POST" action="{{ url_for('admin_backfill') }}" onsubmit="return confirm('This will import historical incidents from public status feeds. Existing data will not be affected. Continue?')">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn-backfill">Backfill from Public Feeds</button>
+            </form>
+            {% if feed_coverage %}
+            <div class="backfill-coverage">
+                <h3>Feed Coverage</h3>
+                {% for feed in feed_coverage %}
+                <div class="backfill-coverage-row">
+                    <span class="backfill-feed-name">{{ feed.name }}</span>
+                    <span class="backfill-feed-detail">
+                        {{ feed.incident_count }} incident{{ 's' if feed.incident_count != 1 else '' }}
+                        {% if feed.date_from and feed.date_to %}
+                            &middot; {{ feed.date_from }} &ndash; {{ feed.date_to }}
+                            {% if feed.days_span is not none %}
+                                (last {{ feed.days_span }} day{{ 's' if feed.days_span != 1 else '' }})
+                            {% endif %}
+                        {% endif %}
+                    </span>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Integration Status -->
+        <div class="integrations">
+            <h3>Alert Integrations</h3>
+            {% set slack = config.get('SLACK_WEBHOOK_URL') %}
+            {% set teams = config.get('TEAMS_WEBHOOK_URL') %}
+            {% set jira = config.get('JIRA_URL') %}
+            <div class="integration-row">
+                <span>Slack</span>
+                <span class="int-status {{ 'configured' if slack else 'not-configured' }}">
+                    {{ 'Connected' if slack else 'Not configured' }}
+                </span>
+            </div>
+            <div class="integration-row">
+                <span>Microsoft Teams</span>
+                <span class="int-status {{ 'configured' if teams else 'not-configured' }}">
+                    {{ 'Connected' if teams else 'Not configured' }}
+                </span>
+            </div>
+            <div class="integration-row">
+                <span>Jira</span>
+                <span class="int-status {{ 'configured' if jira else 'not-configured' }}">
+                    {{ 'Connected' if jira else 'Not configured' }}
+                </span>
+            </div>
+            <div class="integration-row">
+                <span>Entra ID SSO</span>
+                <span class="int-status not-configured">Not configured</span>
+            </div>
+        </div>
+
+        <footer>
+            <a href="{{ url_for('index') }}" style="color: var(--text-secondary); text-decoration: none; font-size: 12px;">
+                &larr; Back to Status Page
+            </a>
+        </footer>
+    </div>
+    <script>
+    var _themeStyle = null;
+    function toggleTheme() {
+        if (!_themeStyle) {
+            _themeStyle = document.createElement('style');
+            _themeStyle.textContent = '*, *::before, *::after { transition: color 0.3s ease-out, background-color 0.3s ease-out, border-color 0.3s ease-out !important; }';
+            document.head.appendChild(_themeStyle);
+        }
+        var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
+        localStorage.setItem('theme', isDark ? 'light' : 'dark');
+        clearTimeout(toggleTheme._timer);
+        toggleTheme._timer = setTimeout(function() {
+            if (_themeStyle && _themeStyle.parentNode) {
+                _themeStyle.parentNode.removeChild(_themeStyle);
+                _themeStyle = null;
+            }
+        }, 400);
+    }
+    (function() {
+        var nav = performance.getEntriesByType('navigation')[0];
+        var isHardRefresh = nav && nav.type === 'reload';
+        if (isHardRefresh) {
+            localStorage.removeItem('theme');
+        } else {
+            var saved = localStorage.getItem('theme');
+            if (saved === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        }
+    })();
+    </script>
+</body>
+</html>

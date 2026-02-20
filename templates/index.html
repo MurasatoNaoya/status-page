@@ -7,10 +7,25 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
+    {# Encode tooltip data as compact JSON attribute instead of inline HTML.
+       A single shared tooltip div is populated by JS on hover. #}
+    {% macro day_tip_data(day) %}data-tip='{{ {'d': day.date | format_day, 'p': day.uptime_pct, 's': day.severity, 'dc': day.down_count, 'dh': day.downtime_hours, 'dm': day.downtime_mins, 'i': day.incidents[:3] | map(attribute='title') | list if day.incidents else [], 'e': day.errors[:3] if day.errors else []} | tojson }}'{% endmacro %}
+
     <div class="container">
         <header>
-            <h1>{{ page.get('title', 'Status') }}</h1>
-            <p>{{ page.get('description', 'Service Status') }}</p>
+            <div class="header-row">
+                <div>
+                    <h1>{{ page.get('title', 'Status') }}</h1>
+                    <p>{{ page.get('description', 'Service Status') }}</p>
+                </div>
+                <div class="header-actions">
+                    <a href="{{ url_for('admin_panel') }}" class="admin-link">Admin Panel</a>
+                    <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode">
+                        <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                        <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                    </button>
+                </div>
+            </div>
         </header>
 
         <!-- Active incident banner (OpenAI style) -->
@@ -24,7 +39,7 @@
                 <div class="active-incident-desc">{{ inc.updates[0].message }}</div>
                 <div class="active-incident-meta">
                     <span class="incident-update-status {{ inc.status }}">{{ inc.status }}</span>
-                    &middot; Ongoing since {{ inc.created_at | gmt }}
+                    &middot; Ongoing since <time class="local-time" datetime="{{ inc.created_at }}">{{ inc.created_at | gmt }}</time>
                 </div>
                 {% endif %}
             </div>
@@ -47,47 +62,39 @@
         </div>
 
         <!-- Services -->
+        <div class="all-services">
         <div class="services">
             {% if dns_bar %}
             <div class="service">
                 <div class="service-header">
                     <span class="service-name">{{ dns_bar.name }}</span>
                     <div class="service-meta">
-                        {% if dns_bar.uptime_pct is not none %}
-                            <span>{{ dns_bar.uptime_pct }}% uptime</span>
+                        {% if dns_bar.response_time_ms %}
+                            <span class="response-time">{{ dns_bar.response_time_ms | round(0) | int }}ms</span>
                         {% endif %}
+                        {% if dns_bar.status != 'no_data' %}
                         <span class="service-badge {{ dns_bar.status }}">
                             {% if dns_bar.status == 'operational' %}Operational
                             {% elif dns_bar.status == 'major_outage' %}Outage
                             {% else %}{{ dns_bar.status }}
                             {% endif %}
                         </span>
+                        {% else %}
+                        <span class="service-badge no-data-badge">No data</span>
+                        {% endif %}
                     </div>
                 </div>
                 <div class="uptime-bar">
                     {% for day in dns_bar.days %}
-                    <div class="uptime-day {% if day.uptime_pct is none %}no-data{% elif day.uptime_pct == 100 %}up{% elif day.uptime_pct >= 95 %}degraded{% else %}down{% endif %}">
-                        <div class="tooltip">
-                            <strong>{{ day.date }}</strong><br>
-                            {% if day.uptime_pct is none %}
-                                No data
-                            {% else %}
-                                {{ day.uptime_pct | round(1) }}% uptime
-                                {% if day.down_count > 0 %}
-                                    <br>{{ day.down_count }}/{{ day.total }} checks failed
-                                    {% for err in day.errors %}
-                                        <br><span class="tooltip-error">{{ err[:80] }}</span>
-                                    {% endfor %}
-                                {% endif %}
-                            {% endif %}
-                        </div>
-                    </div>
+                    <div class="uptime-day {% if day.severity == 'major' %}down{% elif day.severity == 'partial' %}partial{% elif day.severity == 'degraded' %}degraded{% elif day.uptime_pct is none %}no-data{% else %}up{% endif %}"{% if day.incidents %} data-incident-id="{{ day.incidents[0].id }}"{% endif %} {{ day_tip_data(day) }}></div>
                     {% endfor %}
                 </div>
                 <div class="uptime-footer">
                     <span>90 days ago</span>
-                    {% if dns_bar.response_time_ms %}
-                        <span>{{ dns_bar.response_time_ms | round(0) | int }}ms</span>
+                    <span class="uptime-line"></span>
+                    {% if dns_bar.uptime_pct is not none %}
+                        <span class="uptime-pct">{{ dns_bar.uptime_pct }}% uptime</span>
+                        <span class="uptime-line"></span>
                     {% endif %}
                     <span>Today</span>
                 </div>
@@ -101,9 +108,10 @@
                 <div class="service-header">
                     <span class="service-name">{{ svc.name }}</span>
                     <div class="service-meta">
-                        {% if svc.uptime_pct is not none %}
-                            <span>{{ svc.uptime_pct }}% uptime</span>
+                        {% if svc.response_time_ms %}
+                            <span class="response-time">{{ svc.response_time_ms | round(0) | int }}ms</span>
                         {% endif %}
+                        {% if svc.status != 'no_data' %}
                         <span class="service-badge {{ svc.status }}">
                             {% if svc.status == 'operational' %}Operational
                             {% elif svc.status == 'degraded' %}Degraded
@@ -112,34 +120,24 @@
                             {% else %}{{ svc.status }}
                             {% endif %}
                         </span>
+                        {% else %}
+                        <span class="service-badge no-data-badge">No data</span>
+                        {% endif %}
                     </div>
                 </div>
 
                 <!-- 90-day uptime bar -->
                 <div class="uptime-bar">
                     {% for day in svc.days %}
-                    <div class="uptime-day {% if day.uptime_pct is none %}no-data{% elif day.uptime_pct == 100 %}up{% elif day.uptime_pct >= 95 %}degraded{% else %}down{% endif %}">
-                        <div class="tooltip">
-                            <strong>{{ day.date }}</strong><br>
-                            {% if day.uptime_pct is none %}
-                                No data
-                            {% else %}
-                                {{ day.uptime_pct | round(1) }}% uptime
-                                {% if day.down_count > 0 %}
-                                    <br>{{ day.down_count }}/{{ day.total }} checks failed
-                                    {% for err in day.errors %}
-                                        <br><span class="tooltip-error">{{ err[:80] }}</span>
-                                    {% endfor %}
-                                {% endif %}
-                            {% endif %}
-                        </div>
-                    </div>
+                    <div class="uptime-day {% if day.severity == 'major' %}down{% elif day.severity == 'partial' %}partial{% elif day.severity == 'degraded' %}degraded{% elif day.uptime_pct is none %}no-data{% else %}up{% endif %}"{% if day.incidents %} data-incident-id="{{ day.incidents[0].id }}"{% endif %} {{ day_tip_data(day) }}></div>
                     {% endfor %}
                 </div>
                 <div class="uptime-footer">
                     <span>90 days ago</span>
-                    {% if svc.response_time_ms %}
-                        <span>{{ svc.response_time_ms | round(0) | int }}ms</span>
+                    <span class="uptime-line"></span>
+                    {% if svc.uptime_pct is not none %}
+                        <span class="uptime-pct">{{ svc.uptime_pct }}% uptime</span>
+                        <span class="uptime-line"></span>
                     {% endif %}
                     <span>Today</span>
                 </div>
@@ -168,17 +166,38 @@
         <!-- Service Groups -->
         {% for group in groups %}
         <div class="group-section">
-            <details>
-                <summary class="group-header">
-                    <span class="group-name">{{ group.name }}</span>
-                    <div class="group-meta">
-                        {% if group.uptime_pct is not none %}
-                            <span class="group-uptime">{{ group.uptime_pct }}% uptime</span>
+            <!-- Aggregate uptime bar (always visible) -->
+            <div class="group-service">
+                <div class="service-header">
+                    <span class="service-name">{{ group.name }}</span>
+                    <div class="service-meta">
+                        {% if group.response_time_ms %}
+                            <span class="response-time">{{ group.response_time_ms | round(0) | int }}ms</span>
                         {% endif %}
                         <span class="service-badge {{ 'operational' if group.operational else 'major_outage' }}">
                             {{ 'Operational' if group.operational else 'Issues Detected' }}
                         </span>
                     </div>
+                </div>
+                <div class="uptime-bar">
+                    {% for day in group.days %}
+                    <div class="uptime-day {% if day.severity == 'major' %}down{% elif day.severity == 'partial' %}partial{% elif day.severity == 'degraded' %}degraded{% elif day.uptime_pct is none %}no-data{% else %}up{% endif %}"{% if day.incidents %} data-incident-id="{{ day.incidents[0].id }}"{% endif %} {{ day_tip_data(day) }}></div>
+                    {% endfor %}
+                </div>
+                <div class="uptime-footer">
+                    <span>90 days ago</span>
+                    <span class="uptime-line"></span>
+                    {% if group.uptime_pct is not none %}
+                        <span class="uptime-pct">{{ group.uptime_pct }}% uptime</span>
+                        <span class="uptime-line"></span>
+                    {% endif %}
+                    <span>Today</span>
+                </div>
+            </div>
+
+            <details>
+                <summary class="group-expand-toggle">
+                    <span>Show individual services</span>
                 </summary>
                 <div class="services">
                     {% for svc in group.services %}
@@ -186,9 +205,10 @@
                         <div class="service-header">
                             <span class="service-name">{{ svc.name }}</span>
                             <div class="service-meta">
-                                {% if svc.uptime_pct is not none %}
-                                    <span>{{ svc.uptime_pct }}% uptime</span>
+                                {% if svc.response_time_ms %}
+                                    <span class="response-time">{{ svc.response_time_ms | round(0) | int }}ms</span>
                                 {% endif %}
+                                {% if svc.status != 'no_data' %}
                                 <span class="service-badge {{ svc.status }}">
                                     {% if svc.status == 'operational' %}Operational
                                     {% elif svc.status == 'degraded' %}Degraded
@@ -197,33 +217,23 @@
                                     {% else %}{{ svc.status }}
                                     {% endif %}
                                 </span>
+                                {% else %}
+                                <span class="service-badge no-data-badge">No data</span>
+                                {% endif %}
                             </div>
                         </div>
 
                         <div class="uptime-bar">
                             {% for day in svc.days %}
-                            <div class="uptime-day {% if day.uptime_pct is none %}no-data{% elif day.uptime_pct == 100 %}up{% elif day.uptime_pct >= 95 %}degraded{% else %}down{% endif %}">
-                                <div class="tooltip">
-                                    <strong>{{ day.date }}</strong><br>
-                                    {% if day.uptime_pct is none %}
-                                        No data
-                                    {% else %}
-                                        {{ day.uptime_pct | round(1) }}% uptime
-                                        {% if day.down_count > 0 %}
-                                            <br>{{ day.down_count }}/{{ day.total }} checks failed
-                                            {% for err in day.errors %}
-                                                <br><span class="tooltip-error">{{ err[:80] }}</span>
-                                            {% endfor %}
-                                        {% endif %}
-                                    {% endif %}
-                                </div>
-                            </div>
+                            <div class="uptime-day {% if day.severity == 'major' %}down{% elif day.severity == 'partial' %}partial{% elif day.severity == 'degraded' %}degraded{% elif day.uptime_pct is none %}no-data{% else %}up{% endif %}"{% if day.incidents %} data-incident-id="{{ day.incidents[0].id }}"{% endif %} {{ day_tip_data(day) }}></div>
                             {% endfor %}
                         </div>
                         <div class="uptime-footer">
                             <span>90 days ago</span>
-                            {% if svc.response_time_ms %}
-                                <span>{{ svc.response_time_ms | round(0) | int }}ms</span>
+                            <span class="uptime-line"></span>
+                            {% if svc.uptime_pct is not none %}
+                                <span class="uptime-pct">{{ svc.uptime_pct }}% uptime</span>
+                                <span class="uptime-line"></span>
                             {% endif %}
                             <span>Today</span>
                         </div>
@@ -233,27 +243,55 @@
             </details>
         </div>
         {% endfor %}
+        </div><!-- /.all-services -->
 
         <!-- Past Incidents (grouped by date) -->
         <div class="incidents-section">
             <h2>Past Incidents</h2>
+            <div class="incident-filters" id="incidentFilters">
+                <button class="filter-pill active" data-filter="all" onclick="toggleFilter(this)">All</button>
+                <button class="filter-pill" data-filter="azure" onclick="toggleFilter(this)">Azure</button>
+                <button class="filter-pill" data-filter="github" onclick="toggleFilter(this)">GitHub</button>
+                <button class="filter-pill" data-filter="registries" onclick="toggleFilter(this)">Container Registries</button>
+                <button class="filter-pill" data-filter="dns" onclick="toggleFilter(this)">DNS</button>
+                <button class="filter-pill" data-filter="platform" onclick="toggleFilter(this)">Platform</button>
+                <span class="filter-divider"></span>
+                <button class="filter-pill filter-impact-minor" data-filter="minor" data-filter-type="impact" onclick="toggleFilter(this)">Minor</button>
+                <button class="filter-pill filter-impact-major" data-filter="major" data-filter-type="impact" onclick="toggleFilter(this)">Major</button>
+                <button class="filter-pill filter-impact-critical" data-filter="critical" data-filter-type="impact" onclick="toggleFilter(this)">Critical</button>
+            </div>
             {% if incidents_by_date %}
                 {% for date_label, date_incidents in incidents_by_date.items() %}
                 <div class="incident-date-group">
                     <div class="incident-date-header">{{ date_label }}</div>
                     {% for incident in date_incidents %}
-                    <div class="incident">
-                        <div class="incident-title">
-                            {{ incident.title }}
-                            <span class="incident-impact {{ incident.impact }}">{{ incident.impact }}</span>
-                        </div>
-                        {% for update in incident.updates %}
-                        <div class="incident-update">
-                            <span class="incident-update-status {{ update.status }}">{{ update.status }}</span>
-                            — {{ update.message }}
-                            <div class="incident-time">{{ update.created_at | gmt }}</div>
-                        </div>
-                        {% endfor %}
+                    <div class="incident" id="incident-{{ incident.id }}" data-service="{{ incident.service_name or '' }}" data-impact="{{ incident.impact or 'minor' }}" data-category="{% if incident.service_name and 'azure' in incident.service_name|lower %}azure{% elif incident.service_name and ('github' in incident.service_name|lower or incident.service_name == 'github.com') %}github{% elif incident.service_name and ('quay' in incident.service_name|lower or 'docker' in incident.service_name|lower) %}registries{% elif incident.service_name and 'dns' in incident.service_name|lower %}dns{% else %}platform{% endif %}">
+                        {% for alias_id in incident.get('alias_ids', []) %}<span id="incident-{{ alias_id }}" data-alias-for="{{ incident.id }}"></span>{% endfor %}
+                        <details class="incident-details">
+                            <summary class="incident-title">
+                                {% if incident.service_name %}
+                                    {% if 'azure' in incident.service_name|lower %}<span class="incident-tag">Azure</span>
+                                    {% elif 'github' in incident.service_name|lower or incident.service_name == 'github.com' %}<span class="incident-tag">GitHub</span>
+                                    {% elif 'quay' in incident.service_name|lower or 'docker' in incident.service_name|lower %}<span class="incident-tag">Registry</span>
+                                    {% elif 'dns' in incident.service_name|lower %}<span class="incident-tag">DNS</span>
+                                    {% else %}<span class="incident-tag">{{ incident.service_name }}</span>
+                                    {% endif %}
+                                {% endif %}
+                                <span class="incident-title-text">{{ incident.title }}</span>
+                                <span class="incident-impact {{ incident.impact }}">{{ incident.impact }}</span>
+                            </summary>
+                            <div class="incident-updates-body">
+                                {% for update in incident.updates %}
+                                <div class="incident-update">
+                                    <span class="incident-update-status {{ update.status }}">{{ update.status }}</span>{% set clean_msg = update.message | replace('<br />', ' ') | replace('<br>', ' ') | striptags %}{%
+                                    if clean_msg|length > 400 %} - <span class="incident-msg-short">{{ clean_msg[:300] }}<button class="incident-expand" onclick="this.parentElement.style.display='none';this.parentElement.nextElementSibling.style.display='inline'">...</button></span><span class="incident-msg-full" style="display:none">{{ clean_msg }}</span>{%
+                                    else %} - {{ clean_msg }}{%
+                                    endif %}
+                                    <div class="incident-time"><time class="local-time" datetime="{{ update.created_at }}">{{ update.created_at | gmt }}</time></div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </details>
                     </div>
                     {% endfor %}
                 </div>
@@ -263,11 +301,314 @@
                     No incidents reported.
                 </div>
             {% endif %}
+            <div class="no-incidents" id="noFilterResults" style="display:none">
+                No incidents for this filter.
+            </div>
         </div>
 
         <footer>
             Powered by status-page
         </footer>
     </div>
+    <div id="shared-tip"></div>
+    <script>
+    // Theme toggle with smooth transition
+    var _themeStyle = null;
+    function toggleTheme() {
+        // Inject a style that forces ALL elements to transition at the same rate
+        if (!_themeStyle) {
+            _themeStyle = document.createElement('style');
+            _themeStyle.textContent = '*, *::before, *::after { transition: color 0.3s ease-out, background-color 0.3s ease-out, border-color 0.3s ease-out !important; }';
+            document.head.appendChild(_themeStyle);
+        }
+        // Flip theme
+        var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
+        localStorage.setItem('theme', isDark ? 'light' : 'dark');
+        // Remove transition style after animation completes so it doesn't interfere with hovers
+        clearTimeout(toggleTheme._timer);
+        toggleTheme._timer = setTimeout(function() {
+            if (_themeStyle && _themeStyle.parentNode) {
+                _themeStyle.parentNode.removeChild(_themeStyle);
+                _themeStyle = null;
+            }
+        }, 400);
+    }
+    // Set theme from localStorage (soft refresh keeps choice, hard refresh resets to light)
+    (function() {
+        var nav = performance.getEntriesByType('navigation')[0];
+        var isHardRefresh = nav && nav.type === 'reload';
+        if (isHardRefresh) {
+            localStorage.removeItem('theme');
+        } else {
+            var saved = localStorage.getItem('theme');
+            if (saved === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        }
+    })();
+
+    // Incident filters — category and impact work independently
+    var activeCategoryFilter = 'all';
+    var activeImpactFilter = null;
+    var activeFilter = 'all'; // kept for click-to-scroll compatibility
+
+    function toggleFilter(btn) {
+        var filter = btn.getAttribute('data-filter');
+        var isImpact = btn.hasAttribute('data-filter-type');
+
+        if (filter === 'all') {
+            activeCategoryFilter = 'all';
+            activeImpactFilter = null;
+        } else if (isImpact) {
+            activeImpactFilter = (filter === activeImpactFilter) ? null : filter;
+        } else {
+            activeCategoryFilter = (filter === activeCategoryFilter) ? 'all' : filter;
+        }
+
+        // Update activeFilter for click-to-scroll reset
+        activeFilter = (activeCategoryFilter === 'all' && !activeImpactFilter) ? 'all' : 'filtered';
+
+        // Update pill states
+        document.querySelectorAll('.filter-pill').forEach(function(p) {
+            var f = p.getAttribute('data-filter');
+            var imp = p.hasAttribute('data-filter-type');
+            if (f === 'all') {
+                p.classList.toggle('active', activeCategoryFilter === 'all' && !activeImpactFilter);
+            } else if (imp) {
+                p.classList.toggle('active', activeImpactFilter === f);
+            } else {
+                p.classList.toggle('active', activeCategoryFilter === f);
+            }
+        });
+
+        // Filter incidents
+        var showAll = activeCategoryFilter === 'all' && !activeImpactFilter;
+        document.querySelectorAll('.incident[data-category]').forEach(function(inc) {
+            var cat = inc.getAttribute('data-category');
+            var impact = inc.getAttribute('data-impact');
+            var catMatch = activeCategoryFilter === 'all' || activeCategoryFilter === cat;
+            var impMatch = !activeImpactFilter || activeImpactFilter === impact;
+            var shouldShow = showAll || (catMatch && impMatch);
+            if (shouldShow && inc.style.display === 'none') {
+                inc.style.display = '';
+                inc.classList.remove('fade-in');
+                void inc.offsetWidth;
+                inc.classList.add('fade-in');
+            } else if (!shouldShow) {
+                inc.style.display = 'none';
+                inc.classList.remove('fade-in');
+            }
+        });
+
+        // Hide empty date groups
+        document.querySelectorAll('.incident-date-group').forEach(function(group) {
+            var visible = group.querySelectorAll('.incident[data-category]:not([style*="display: none"])');
+            var shouldShow = visible.length > 0;
+            if (shouldShow && group.style.display === 'none') {
+                group.style.display = '';
+                group.classList.remove('fade-in');
+                void group.offsetWidth;
+                group.classList.add('fade-in');
+            } else if (!shouldShow) {
+                group.style.display = 'none';
+                group.classList.remove('fade-in');
+            }
+        });
+
+        var anyVisible = document.querySelector('.incident-date-group:not([style*="display: none"])');
+        var noResults = document.getElementById('noFilterResults');
+        if (noResults) {
+            noResults.style.display = (!showAll && !anyVisible) ? '' : 'none';
+        }
+    }
+
+    // Convert all timestamps to the viewer's local timezone
+    document.querySelectorAll('.local-time').forEach(function(el) {
+        var iso = el.getAttribute('datetime');
+        if (!iso) return;
+        var d = new Date(iso.replace('Z', '+00:00'));
+        if (isNaN(d)) return;
+        el.textContent = d.toLocaleDateString(undefined, {
+            month: 'short', day: 'numeric', year: 'numeric'
+        }) + ' ' + d.toLocaleTimeString(undefined, {
+            hour: '2-digit', minute: '2-digit', hour12: false,
+            timeZoneName: 'short'
+        });
+    });
+
+    // Fluid expand/collapse for all <details> elements.
+    // Measures actual content height for precise animation — no jitter.
+    function getContent(details) {
+        return details.classList.contains('incident-details')
+            ? details.querySelector('.incident-updates-body')
+            : details.querySelector('.services');
+    }
+
+    function animatedOpen(details) {
+        if (details._animating) return;
+        details._animating = true;
+        details.setAttribute('open', '');
+        var content = getContent(details);
+        if (!content) { details._animating = false; return; }
+        // Measure natural height
+        content.style.transition = 'none';
+        content.style.height = 'auto';
+        content.style.opacity = '1';
+        var h = content.scrollHeight;
+        // Reset to collapsed
+        content.style.height = '0px';
+        content.style.opacity = '0';
+        // Force reflow, then animate to measured height
+        content.offsetHeight;
+        content.style.transition = '';
+        content.style.height = h + 'px';
+        content.style.opacity = '1';
+        function done() {
+            content.removeEventListener('transitionend', done);
+            content.style.height = 'auto';
+            content.classList.add('expanded');
+            details._animating = false;
+        }
+        content.addEventListener('transitionend', done);
+    }
+
+    function animatedClose(details) {
+        if (details._animating) return;
+        details._animating = true;
+        var content = getContent(details);
+        if (!content) { details._animating = false; return; }
+        content.classList.remove('expanded');
+        // Lock current height, then collapse
+        content.style.height = content.scrollHeight + 'px';
+        content.style.transition = 'none';
+        content.offsetHeight;
+        content.style.transition = '';
+        content.style.height = '0px';
+        content.style.opacity = '0';
+        function done() {
+            content.removeEventListener('transitionend', done);
+            details.removeAttribute('open');
+            details._animating = false;
+        }
+        content.addEventListener('transitionend', done);
+    }
+
+    // Intercept all summary clicks for animated open/close
+    document.addEventListener('click', function(e) {
+        var summary = e.target.closest('summary');
+        if (summary) {
+            var details = summary.parentElement;
+            if (details && details.tagName === 'DETAILS') {
+                e.preventDefault();
+                if (details.hasAttribute('open')) {
+                    animatedClose(details);
+                } else {
+                    animatedOpen(details);
+                }
+                return;
+            }
+        }
+        // Collapse open service-group details when clicking outside
+        if (!e.target.closest('details')) {
+            document.querySelectorAll('.group-section details[open]').forEach(function(d) {
+                animatedClose(d);
+            });
+        }
+    });
+
+    // Event delegation: tooltip + click-to-scroll on uptime bars
+    // Uses 3 document-level listeners instead of ~4,800 individual ones
+    (function() {
+        var tip = document.getElementById('shared-tip');
+        var activeBar = null;
+        function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+        // Tooltip — mouseover/mouseout (delegated)
+        document.addEventListener('mouseover', function(e) {
+            var bar = e.target.closest('.uptime-day[data-tip]');
+            if (!bar || bar === activeBar) return;
+            activeBar = bar;
+            var data;
+            try { data = JSON.parse(bar.getAttribute('data-tip')); } catch(x) { return; }
+            var h = '<div class="tooltip-date">' + esc(data.d) + '</div>';
+
+            if (!data.s) {
+                h += '<div class="tooltip-ok">' + (data.p !== null ? 'No downtime recorded' : 'No data') + '</div>';
+            } else {
+                var icon = data.s === 'major' ? '\u25CF' : '\u25D0';
+                var label = data.s === 'major' ? 'Major outage' : data.s === 'partial' ? 'Partial outage' : 'Degraded performance';
+                var dur = '';
+                if (data.dh > 0) dur = data.dh + 'h ' + data.dm + 'm';
+                else if (data.dm > 0) dur = data.dm + 'm';
+                else if (data.dc > 0) dur = data.dc + ' failed check' + (data.dc > 1 ? 's' : '');
+                h += '<div class="tooltip-severity"><span class="tooltip-severity-icon ' + data.s + '">' + icon + '</span><span class="tooltip-severity-label">' + esc(label) + '</span>';
+                if (dur) h += '<span class="tooltip-duration">' + esc(dur) + '</span>';
+                h += '</div>';
+            }
+
+            // Merge incidents and errors into one deduplicated "Related" list
+            var related = [], seen = {};
+            if (data.i) for (var j = 0; j < data.i.length; j++) { if (!seen[data.i[j]]) { seen[data.i[j]] = 1; related.push(data.i[j]); } }
+            if (data.e) for (var j = 0; j < data.e.length; j++) { if (!seen[data.e[j]]) { seen[data.e[j]] = 1; related.push(data.e[j]); } }
+            if (related.length) {
+                h += '<div class="tooltip-related"><div class="tooltip-related-header">Related</div>';
+                for (var j = 0; j < related.length; j++) h += '<div class="tooltip-incident">' + esc(related[j]) + '</div>';
+                h += '</div>';
+            }
+
+            tip.innerHTML = h;
+            tip.style.display = 'block';
+            var rect = bar.getBoundingClientRect();
+            var tw = tip.offsetWidth, th = tip.offsetHeight;
+            var left = rect.left + rect.width / 2 - tw / 2;
+            var top = rect.top - th - 10;
+            if (left < 8) left = 8;
+            if (left + tw > window.innerWidth - 8) left = window.innerWidth - tw - 8;
+            if (top < 8) top = rect.bottom + 10;
+            tip.style.left = left + 'px';
+            tip.style.top = top + 'px';
+        });
+
+        document.addEventListener('mouseout', function(e) {
+            var bar = e.target.closest('.uptime-day');
+            if (!bar) return;
+            // Only hide if we're leaving the bar entirely (not entering a child)
+            var related = e.relatedTarget;
+            if (related && bar.contains(related)) return;
+            activeBar = null;
+            tip.style.display = 'none';
+        });
+
+        // Click-to-scroll (delegated)
+        document.addEventListener('click', function(e) {
+            var bar = e.target.closest('.uptime-day[data-incident-id]');
+            if (!bar) return;
+            e.stopPropagation();
+            var id = bar.getAttribute('data-incident-id');
+            var el = document.getElementById('incident-' + id);
+            var target = el;
+            if (el && el.hasAttribute('data-alias-for')) {
+                target = el.closest('.incident') || document.getElementById('incident-' + el.getAttribute('data-alias-for'));
+            }
+            if (target) {
+                if (activeFilter !== 'all') {
+                    var allBtn = document.querySelector('.filter-pill[data-filter="all"]');
+                    if (allBtn) toggleFilter(allBtn);
+                }
+                setTimeout(function() {
+                    var details = target.querySelector('.incident-details');
+                    if (details && !details.hasAttribute('open')) animatedOpen(details);
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    target.classList.add('incident-highlight');
+                    setTimeout(function() { target.classList.remove('incident-highlight'); }, 2000);
+                }, 50);
+            }
+        });
+
+        // Set cursor on bars with incident links via CSS class
+        document.querySelectorAll('.uptime-day[data-incident-id]').forEach(function(b) { b.classList.add('has-link'); });
+    })();
+    </script>
 </body>
 </html>

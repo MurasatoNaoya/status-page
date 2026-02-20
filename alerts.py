@@ -1,0 +1,151 @@
+"""Alert integrations for incident notifications.
+
+Configure via environment variables:
+  SLACK_WEBHOOK_URL   - Slack incoming webhook for #incidents channel
+  JIRA_URL            - e.g. https://yourcompany.atlassian.net
+  JIRA_PROJECT        - e.g. OPS
+  JIRA_USER           - e.g. you@company.com
+  JIRA_TOKEN          - API token from https://id.atlassian.net/manage-profile/security/api-tokens
+  ALERT_EMAIL_TO      - comma-separated emails (requires SMTP config)
+  TEAMS_WEBHOOK_URL   - Microsoft Teams incoming webhook
+"""
+
+import logging
+import os
+
+import requests
+
+logger = logging.getLogger(__name__)
+
+
+def send_alerts(incident_id, title, impact, message, service=None):
+    """Send alert to all configured channels."""
+    _send_slack(incident_id, title, impact, message, service)
+    _send_teams(incident_id, title, impact, message, service)
+    _create_jira_ticket(incident_id, title, impact, message, service)
+
+
+def send_resolution(incident_id, message):
+    """Notify channels that an incident has been resolved."""
+    slack_url = os.environ.get("SLACK_WEBHOOK_URL")
+    if slack_url:
+        try:
+            payload = {
+                "text": f":white_check_mark: *Incident #{incident_id} Resolved*\n{message}",
+            }
+            requests.post(slack_url, json=payload, timeout=10)
+        except Exception as e:
+            logger.error("Slack resolution alert failed: %s", e)
+
+    teams_url = os.environ.get("TEAMS_WEBHOOK_URL")
+    if teams_url:
+        try:
+            payload = {
+                "text": f"Incident #{incident_id} Resolved: {message}",
+            }
+            requests.post(teams_url, json=payload, timeout=10)
+        except Exception as e:
+            logger.error("Teams resolution alert failed: %s", e)
+
+
+def _send_slack(incident_id, title, impact, message, service):
+    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
+    if not webhook_url:
+        logger.debug("SLACK_WEBHOOK_URL not set, skipping Slack alert")
+        return
+
+    emoji = {
+        "critical": ":rotating_light:",
+        "major": ":red_circle:",
+        "minor": ":warning:",
+    }.get(impact, ":warning:")
+
+    svc_text = f" ({service})" if service else ""
+    payload = {
+        "text": f"{emoji} *Incident Declared{svc_text}*",
+        "blocks": [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": f"{emoji} {title}"},
+            },
+            {
+                "type": "section",
+                "fields": [
+                    {"type": "mrkdwn", "text": f"*Impact:* {impact.upper()}"},
+                    {"type": "mrkdwn", "text": f"*Service:* {service or 'Multiple'}"},
+                ],
+            },
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": message},
+            },
+        ],
+    }
+
+    try:
+        resp = requests.post(webhook_url, json=payload, timeout=10)
+        resp.raise_for_status()
+        logger.info("Slack alert sent for incident #%d", incident_id)
+    except Exception as e:
+        logger.error("Slack alert failed: %s", e)
+
+
+def _send_teams(incident_id, title, impact, message, service):
+    webhook_url = os.environ.get("TEAMS_WEBHOOK_URL")
+    if not webhook_url:
+        logger.debug("TEAMS_WEBHOOK_URL not set, skipping Teams alert")
+        return
+
+    svc_text = f" ({service})" if service else ""
+    payload = {
+        "text": f"**Incident Declared{svc_text}**: {title}\n\n**Impact:** {impact.upper()}\n\n{message}",
+    }
+
+    try:
+        resp = requests.post(webhook_url, json=payload, timeout=10)
+        resp.raise_for_status()
+        logger.info("Teams alert sent for incident #%d", incident_id)
+    except Exception as e:
+        logger.error("Teams alert failed: %s", e)
+
+
+def _create_jira_ticket(incident_id, title, impact, message, service):
+    jira_url = os.environ.get("JIRA_URL")
+    project = os.environ.get("JIRA_PROJECT")
+    user = os.environ.get("JIRA_USER")
+    token = os.environ.get("JIRA_TOKEN")
+
+    if not all([jira_url, project, user, token]):
+        logger.debug("JIRA env vars not fully set, skipping Jira ticket")
+        return
+
+    priority_map = {
+        "critical": "Highest",
+        "major": "High",
+        "minor": "Medium",
+    }
+
+    svc_text = f" [{service}]" if service else ""
+    payload = {
+        "fields": {
+            "project": {"key": project},
+            "summary": f"[INCIDENT]{svc_text} {title}",
+            "description": f"Impact: {impact.upper()}\n\n{message}\n\nAuto-created by status-page (incident #{incident_id})",
+            "issuetype": {"name": "Bug"},
+            "priority": {"name": priority_map.get(impact, "Medium")},
+        }
+    }
+
+    try:
+        resp = requests.post(
+            f"{jira_url.rstrip('/')}/rest/api/2/issue",
+            json=payload,
+            auth=(user, token),
+            headers={"Content-Type": "application/json"},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        issue_key = resp.json().get("key", "?")
+        logger.info("Jira ticket %s created for incident #%d", issue_key, incident_id)
+    except Exception as e:
+        logger.error("Jira ticket creation failed: %s", e)

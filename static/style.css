@@ -1,4 +1,5 @@
-:root {
+:root,
+[data-theme="light"] {
     --bg: #FAF9F5;
     --text: #141413;
     --text-secondary: #87867F;
@@ -8,12 +9,49 @@
     --orange: #E86235;
     --red: #E04343;
     --blue: #2C84DB;
-    --card-bg: #FFFFFF;
+    --card-bg: #FAF9F5;
     --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     --font-mono: "SF Mono", "Fira Code", "Fira Mono", Menlo, monospace;
+    --no-data: #E8E6DF;
+    --tooltip-bg: #141413;
+    --incident-bg: #fdecea;
+    --incident-border: #ef9a9a;
+    --incident-text: #b71c1c;
+    --operational-bg: #f0f7e6;
+    --operational-text: #3d6b0a;
+    --degraded-bg: #fff8e1;
+    --degraded-text: #8a6d00;
+    --partial-bg: #fdf0ea;
+    --partial-text: #c4521e;
+}
+
+[data-theme="dark"] {
+    --bg: #0D1117;
+    --text: #E6EDF3;
+    --text-secondary: #7D8590;
+    --border: #30363D;
+    --green: #4080cf;
+    --yellow: #FAA72A;
+    --orange: #E86235;
+    --red: #E04343;
+    --blue: #58A6FF;
+    --card-bg: #0D1117;
+    --no-data: #21262D;
+    --tooltip-bg: #E6EDF3;
+    --incident-bg: #2D1214;
+    --incident-border: #5C2124;
+    --incident-text: #F85149;
+    --operational-bg: #111D2E;
+    --operational-text: #4080cf;
+    --degraded-bg: #2B1D11;
+    --degraded-text: #E3B341;
+    --partial-bg: #2B1811;
+    --partial-text: #E86235;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* Theme transition — applied via JS during toggle only */
 
 body {
     font-family: var(--font);
@@ -30,35 +68,81 @@ body {
 }
 
 /* Header */
+.header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+}
+
 header {
     padding: 40px 0 32px;
     border-bottom: 1px solid var(--border);
 }
 
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.admin-link {
+    font-size: 13px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    position: relative;
+    top: 3px;
+}
+.admin-link:hover { color: var(--text); }
+
+.theme-toggle {
+    background: none;
+    border: none;
+    padding: 6px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: color 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 4px;
+}
+
+.theme-toggle:hover {
+    color: var(--text);
+}
+
+/* Light mode (default): show moon icon, hide sun */
+.icon-sun { display: none; }
+.icon-moon { display: block; }
+/* Dark mode: show sun icon, hide moon */
+[data-theme="dark"] .icon-sun { display: block; }
+[data-theme="dark"] .icon-moon { display: none; }
+
 header h1 {
-    font-size: 22px;
-    font-weight: 600;
-    letter-spacing: -0.02em;
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
 }
 
 header p {
     color: var(--text-secondary);
     font-size: 14px;
-    margin-top: 4px;
+    margin-top: 2px;
 }
 
 /* DNS Resolution Bar */
 .dns-bar {
     margin: 24px 0 0;
     padding: 16px 20px;
-    border-radius: 10px;
+    border-radius: 0;
     border: 1px solid var(--border);
     background: var(--card-bg);
 }
 
 .dns-bar.down {
-    border-color: #ef9a9a;
-    background: #fdecea;
+    border-color: var(--incident-border);
+    background: var(--incident-bg);
 }
 
 .dns-bar-header {
@@ -76,18 +160,14 @@ header p {
 .dns-bar-status {
     font-size: 12px;
     font-weight: 500;
-    padding: 2px 10px;
-    border-radius: 12px;
 }
 
 .dns-bar.up .dns-bar-status {
-    background: #f0f7e6;
-    color: #3d6b0a;
+    color: var(--operational-text);
 }
 
 .dns-bar.down .dns-bar-status {
-    background: #fdecea;
-    color: #b71c1c;
+    color: var(--incident-text);
 }
 
 .dns-bar-targets {
@@ -108,8 +188,8 @@ header p {
 }
 
 .dns-target.down {
-    background: #fdecea;
-    border-color: #ef9a9a;
+    background: var(--incident-bg);
+    border-color: var(--incident-border);
 }
 
 .dns-target-dot {
@@ -141,31 +221,32 @@ header p {
 /* Overall status banner */
 .overall-status {
     margin: 32px 0;
-    padding: 16px 20px;
-    border-radius: 10px;
-    font-size: 15px;
-    font-weight: 500;
+    padding: 18px 20px;
+    border-radius: 0;
+    font-size: 16px;
+    font-weight: 600;
     display: flex;
     align-items: center;
     gap: 10px;
+    letter-spacing: -0.01em;
 }
 
 .overall-status.operational {
-    background: #f0f7e6;
-    color: #3d6b0a;
-    border: 1px solid #c5e1a5;
+    background: var(--operational-bg);
+    color: var(--operational-text);
+    border: 1px solid var(--operational-text);
 }
 
 .overall-status.degraded {
-    background: #fff8e1;
-    color: #8a6d00;
-    border: 1px solid #ffe082;
+    background: var(--degraded-bg);
+    color: var(--degraded-text);
+    border: 1px solid var(--degraded-text);
 }
 
 .overall-status.major_outage {
-    background: #fdecea;
-    color: #b71c1c;
-    border: 1px solid #ef9a9a;
+    background: var(--incident-bg);
+    color: var(--incident-text);
+    border: 1px solid var(--incident-border);
 }
 
 .status-dot {
@@ -175,25 +256,51 @@ header p {
     flex-shrink: 0;
 }
 
-.status-dot.operational { background: var(--green); }
-.status-dot.degraded { background: var(--yellow); }
-.status-dot.partial_outage { background: var(--orange); }
-.status-dot.major_outage { background: var(--red); }
+.status-dot.operational { background: var(--green); animation: pulse-operational 2s ease-in-out infinite; }
+.status-dot.degraded { background: var(--yellow); animation: pulse-yellow 1.5s ease-in-out infinite; }
+.status-dot.partial_outage { background: var(--orange); animation: pulse-orange 1.5s ease-in-out infinite; }
+.status-dot.major_outage { background: var(--red); animation: pulse-red 1s ease-in-out infinite; }
 .status-dot.maintenance { background: var(--blue); }
+
+@keyframes pulse-operational {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(118, 173, 42, 0.4); }
+    50% { box-shadow: 0 0 0 6px rgba(118, 173, 42, 0); }
+}
+
+[data-theme="dark"] .status-dot.operational { animation: pulse-operational-dark 2s ease-in-out infinite; }
+@keyframes pulse-operational-dark {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(64, 128, 207, 0.4); }
+    50% { box-shadow: 0 0 0 8px rgba(64, 128, 207, 0); }
+}
+
+@keyframes pulse-yellow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(250, 167, 42, 0.4); }
+    50% { box-shadow: 0 0 0 6px rgba(250, 167, 42, 0); }
+}
+
+@keyframes pulse-orange {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(232, 98, 53, 0.4); }
+    50% { box-shadow: 0 0 0 6px rgba(232, 98, 53, 0); }
+}
+
+@keyframes pulse-red {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(224, 67, 67, 0.5); }
+    50% { box-shadow: 0 0 0 8px rgba(224, 67, 67, 0); }
+}
 
 /* Active incident banner (OpenAI style) */
 .active-incident-banner {
     margin: 24px 0 0;
     padding: 20px 24px;
-    background: #fdecea;
-    border: 1px solid #ef9a9a;
-    border-radius: 10px;
+    background: var(--incident-bg);
+    border: 1px solid var(--incident-border);
+    border-radius: 0;
 }
 
 .active-incident-label {
     font-size: 13px;
     font-weight: 600;
-    color: #b71c1c;
+    color: var(--incident-text);
     text-transform: uppercase;
     letter-spacing: 0.04em;
     margin-bottom: 12px;
@@ -201,7 +308,7 @@ header p {
 
 .active-incident {
     padding: 12px 0;
-    border-top: 1px solid #ef9a9a;
+    border-top: 1px solid var(--incident-border);
 }
 
 .active-incident:first-of-type {
@@ -212,13 +319,13 @@ header p {
 .active-incident-title {
     font-size: 15px;
     font-weight: 600;
-    color: #b71c1c;
+    color: var(--incident-text);
     margin-bottom: 4px;
 }
 
 .active-incident-desc {
     font-size: 13px;
-    color: #4a1414;
+    color: var(--text);
     line-height: 1.5;
     margin-bottom: 6px;
 }
@@ -235,8 +342,7 @@ header p {
     gap: 1px;
     background: var(--border);
     border: 1px solid var(--border);
-    border-radius: 10px;
-    overflow: hidden;
+    border-radius: 0;
 }
 
 .service {
@@ -254,6 +360,12 @@ header p {
 .service-name {
     font-size: 14px;
     font-weight: 500;
+    letter-spacing: -0.01em;
+}
+
+.group-service .service-name {
+    font-size: 15px;
+    font-weight: 600;
 }
 
 .service-meta {
@@ -264,92 +376,176 @@ header p {
     color: var(--text-secondary);
 }
 
+.response-time {
+    font-family: var(--font-mono);
+    font-size: 12px;
+}
+
 .service-badge {
     font-size: 12px;
     font-weight: 500;
-    padding: 2px 10px;
-    border-radius: 12px;
 }
 
 .service-badge.operational {
-    background: #f0f7e6;
-    color: #3d6b0a;
+    color: var(--operational-text);
+}
+
+.service-badge.degraded {
+    color: var(--degraded-text);
+}
+
+.service-badge.partial_outage {
+    color: var(--orange);
 }
 
 .service-badge.major_outage {
-    background: #fdecea;
-    color: #b71c1c;
+    color: var(--incident-text);
+}
+
+.no-data-badge {
+    color: var(--text-secondary);
 }
 
 /* 90-day uptime bar */
 .uptime-bar {
     display: flex;
-    gap: 1.5px;
+    gap: 2px;
     height: 32px;
     align-items: stretch;
 }
 
 .uptime-day {
     flex: 1;
-    border-radius: 2px;
+    border-radius: 0;
     position: relative;
-    cursor: pointer;
     min-width: 0;
-    transition: opacity 0.1s;
 }
 
 .uptime-day:hover {
-    opacity: 0.8;
+    filter: brightness(0.85);
 }
+
+.uptime-day.has-link { cursor: pointer; }
 
 .uptime-day.up { background: var(--green); }
 .uptime-day.degraded { background: var(--yellow); }
+.uptime-day.partial { background: var(--orange); }
 .uptime-day.down { background: var(--red); }
-.uptime-day.no-data { background: #E8E6DF; }
+.uptime-day.no-data { background: var(--no-data); }
 
-/* Tooltip */
-.uptime-day .tooltip {
+/* Shared tooltip — positioned by JS */
+#shared-tip {
     display: none;
-    position: absolute;
-    bottom: calc(100% + 8px);
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--text);
-    color: #fff;
-    padding: 6px 10px;
-    border-radius: 6px;
-    font-size: 12px;
+    position: fixed;
+    background: #FFFFFF;
+    color: var(--text);
+    padding: 16px 20px;
+    border-radius: 8px;
+    font-size: 13px;
     white-space: normal;
-    max-width: 280px;
-    min-width: 140px;
-    z-index: 10;
+    min-width: 280px;
+    max-width: 360px;
+    z-index: 100;
     pointer-events: none;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
+    border: 1px solid var(--border);
 }
 
-.uptime-day:hover .tooltip {
-    display: block;
+[data-theme="dark"] #shared-tip {
+    background: #161B22;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
-.tooltip-error {
-    color: #ef9a9a;
+.tooltip-date {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+.tooltip-ok {
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+.tooltip-severity {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    background: var(--bg);
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.tooltip-severity-icon {
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.tooltip-severity-icon.major { color: var(--red); }
+.tooltip-severity-icon.partial { color: var(--orange); }
+.tooltip-severity-icon.degraded { color: var(--yellow); }
+
+.tooltip-severity-label {
+    flex: 1;
+    white-space: nowrap;
+}
+
+.tooltip-duration {
+    color: var(--text-secondary);
     font-family: var(--font-mono);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.tooltip-related {
+    margin-top: 12px;
+}
+
+.tooltip-related-header {
     font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.tooltip-incident {
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--text);
+    padding: 2px 0;
 }
 
 .uptime-footer {
     display: flex;
-    justify-content: space-between;
+    align-items: center;
     font-size: 12px;
     color: var(--text-secondary);
-    margin-top: 6px;
+    margin-top: 8px;
+}
+
+.uptime-line {
+    flex: 1;
+    height: 0;
+    border-top: 1px solid var(--border);
+    margin: 0 10px;
+}
+
+.uptime-pct {
+    font-weight: 500;
+    color: var(--text);
+    font-size: 12px;
 }
 
 /* Service error message */
 .service-error {
     margin-top: 8px;
     padding: 6px 10px;
-    background: #fdecea;
-    color: #b71c1c;
+    background: var(--incident-bg);
+    color: var(--incident-text);
     border-radius: 6px;
     font-size: 12px;
     font-family: var(--font-mono);
@@ -359,7 +555,7 @@ header p {
 .social-chatter {
     margin-top: 12px;
     padding: 10px 14px;
-    background: #f5f4f0;
+    background: var(--bg);
     border-radius: 8px;
     border: 1px solid var(--border);
 }
@@ -411,42 +607,88 @@ header p {
     margin-left: 6px;
 }
 
+/* All services wrapper — flush continuous block */
+.all-services {
+    border: 1px solid var(--border);
+    margin-top: 32px;
+}
+
+.all-services > .services {
+    border: none;
+}
+
 /* Service groups */
 .group-section {
-    margin-top: 24px;
+    margin-top: 0;
+    border-top: 1px solid var(--border);
 }
 
-.group-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 20px;
+.group-service {
     background: var(--card-bg);
-    border: 1px solid var(--border);
-    border-radius: 10px;
+    padding: 16px 20px;
+}
+
+.group-expand-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 20px;
+    font-size: 13px;
+    color: var(--text-secondary);
     cursor: pointer;
     list-style: none;
-    margin-bottom: 0;
-    transition: border-radius 0.15s;
+    border: none;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
+    background: var(--card-bg);
 }
 
-details[open] > .group-header {
-    border-radius: 10px 10px 0 0;
-    border-bottom: none;
-}
+.group-expand-toggle::-webkit-details-marker { display: none; }
 
-.group-header::-webkit-details-marker { display: none; }
-
-.group-header::before {
+.group-expand-toggle::before {
     content: "\25B6";
-    font-size: 10px;
+    font-size: 9px;
     color: var(--text-secondary);
     transition: transform 0.15s;
-    margin-right: 8px;
+    margin-right: 6px;
 }
 
-details[open] > .group-header::before {
+details[open] > .group-expand-toggle::before {
     transform: rotate(90deg);
+}
+
+details[open] > .group-expand-toggle + .services {
+    border-top: none;
+}
+
+/* Expand/collapse for service groups — JS drives height */
+details .services {
+    overflow: hidden;
+    height: 0;
+    opacity: 0;
+    transition: height 0.3s ease, opacity 0.25s ease;
+}
+
+details[open] .services.expanded {
+    opacity: 1;
+    overflow: visible;
+}
+
+/* Expand/collapse for incident details — JS drives height */
+.incident-updates-body {
+    overflow: hidden;
+    height: 0;
+    opacity: 0;
+    transition: height 0.25s ease, opacity 0.2s ease;
+}
+
+.incident-details[open] .incident-updates-body.expanded {
+    opacity: 1;
+    overflow: visible;
+}
+
+.group-expand-toggle:hover {
+    color: var(--text);
 }
 
 .group-name {
@@ -466,32 +708,73 @@ details[open] > .group-header::before {
     color: var(--text-secondary);
 }
 
-details[open] > .group-header + .services {
-    border-top: none;
-    border-radius: 0 0 10px 10px;
-}
-
 /* Incidents section */
 .incidents-section {
-    margin-top: 48px;
+    margin-top: 56px;
     padding-bottom: 64px;
 }
 
+.incident-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 24px;
+}
+
+.filter-pill {
+    padding: 5px 14px;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    background: var(--card-bg);
+    font-size: 12px;
+    font-weight: 500;
+    font-family: inherit;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: none;
+}
+
+.filter-pill:hover {
+    color: var(--text);
+    border-color: var(--text-secondary);
+}
+
+.filter-pill.active {
+    background: var(--text);
+    color: var(--bg);
+    border-color: var(--text);
+}
+
+.filter-divider {
+    width: 1px;
+    background: var(--border);
+    align-self: stretch;
+    margin: 0 4px;
+}
+
+.filter-impact-minor.active { background: var(--yellow); color: #fff; border-color: var(--yellow); }
+.filter-impact-major.active { background: var(--orange); color: #fff; border-color: var(--orange); }
+.filter-impact-critical.active { background: var(--red); color: #fff; border-color: var(--red); }
+
 .incidents-section h2 {
-    font-size: 16px;
-    font-weight: 600;
-    margin-bottom: 20px;
-    padding-bottom: 12px;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 24px;
+    padding-bottom: 14px;
     border-bottom: 1px solid var(--border);
 }
 
 .incident-date-group {
-    margin-bottom: 32px;
+    margin-bottom: 36px;
 }
 
 .incident-date-header {
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
     padding-bottom: 10px;
     margin-bottom: 16px;
     border-bottom: 1px solid var(--border);
@@ -508,13 +791,71 @@ details[open] > .group-header + .services {
     padding-bottom: 0;
 }
 
+/* Incident details — collapsed by default */
+.incident-details {
+    /* Remove default details styling */
+}
+
+.incident-details > summary {
+    list-style: none;
+    cursor: pointer;
+}
+
+.incident-details > summary::-webkit-details-marker { display: none; }
+
 .incident-title {
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 600;
-    margin-bottom: 8px;
+    margin-bottom: 0;
     display: flex;
     align-items: center;
     gap: 8px;
+    letter-spacing: -0.01em;
+}
+
+/* Gap between title and updates is on the body, not the title,
+   so it doesn't cause a layout shift during the height animation. */
+.incident-updates-body {
+    padding-top: 10px;
+}
+
+.incident-title::before {
+    content: "\25B6";
+    font-size: 8px;
+    color: var(--text-secondary);
+    transition: transform 0.15s;
+    flex-shrink: 0;
+}
+
+.incident-details[open] > .incident-title::before {
+    transform: rotate(90deg);
+}
+
+.incident-title-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.incident-title:hover {
+    color: var(--text);
+}
+
+/* Smooth expand for incident updates */
+.incident-updates-body {
+    overflow: hidden;
+    animation: fadeIn 0.2s ease both;
+}
+
+.incident-tag {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 8px;
+    border-radius: 4px;
+    background: var(--border);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
 }
 
 .incident-impact {
@@ -526,9 +867,9 @@ details[open] > .group-header + .services {
     letter-spacing: 0.03em;
 }
 
-.incident-impact.minor { background: #fff8e1; color: #8a6d00; }
-.incident-impact.major { background: #fdecea; color: #b71c1c; }
-.incident-impact.critical { background: #fdecea; color: #b71c1c; }
+.incident-impact.minor { background: var(--degraded-bg); color: var(--degraded-text); }
+.incident-impact.major { background: var(--partial-bg); color: var(--partial-text); }
+.incident-impact.critical { background: var(--incident-bg); color: var(--incident-text); }
 
 .incident-update {
     margin-top: 10px;
@@ -543,15 +884,30 @@ details[open] > .group-header + .services {
     margin-right: 4px;
 }
 
-.incident-update-status.investigating { color: var(--orange); }
-.incident-update-status.identified { color: var(--yellow); }
-.incident-update-status.monitoring { color: var(--blue); }
+.incident-update-status.investigating { color: var(--text); }
+.incident-update-status.identified { color: var(--text); }
+.incident-update-status.monitoring { color: var(--text); }
 .incident-update-status.resolved { color: var(--green); }
 
 .incident-time {
     font-size: 12px;
     color: var(--text-secondary);
     margin-top: 2px;
+}
+
+.incident-expand {
+    background: none;
+    border: none;
+    color: var(--blue);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 0;
+    font-family: inherit;
+}
+
+.incident-expand:hover {
+    text-decoration: underline;
 }
 
 /* No incidents */
@@ -565,15 +921,47 @@ details[open] > .group-header + .services {
 /* Footer */
 footer {
     text-align: center;
-    padding: 24px 0;
+    padding: 32px 0;
     font-size: 12px;
     color: var(--text-secondary);
     border-top: 1px solid var(--border);
+    margin-top: 8px;
+    letter-spacing: 0.01em;
+}
+
+/* Fade-in animation for dynamically revealed content */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Services inside details are always visible — the container
+   opacity/max-height transition handles the expand/collapse. */
+
+/* Filter fade animation for incidents */
+.incident-date-group.fade-in,
+.incident.fade-in {
+    animation: fadeIn 0.25s ease both;
+}
+
+/* Highlight animation when scrolling to an incident from a bar click */
+.incident-highlight {
+    animation: highlightPulse 2s ease-out;
+}
+@keyframes highlightPulse {
+    0%, 15% { background-color: var(--degraded-bg); }
+    100% { background-color: transparent; }
 }
 
 /* Responsive */
 @media (max-width: 600px) {
     .container { padding: 0 16px; }
-    header { padding: 24px 0; }
+    header { padding: 24px 0 20px; }
+    header h1 { font-size: 20px; }
+    .overall-status { font-size: 14px; padding: 14px 16px; margin: 24px 0; }
     .uptime-bar { height: 24px; }
+    .service { padding: 14px 16px; }
+    .service-header { flex-wrap: wrap; gap: 6px; }
+    .incidents-section h2 { font-size: 18px; }
+    .incidents-section { margin-top: 40px; }
 }

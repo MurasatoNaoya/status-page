@@ -509,7 +509,9 @@ _VALID_IMPACTS = {"major", "partial", "minor", "none"}
 def update_incident_impact(incident_id, impact):
     """Update an incident's impact level (used when feeds re-classify)."""
     if impact not in _VALID_IMPACTS:
-        logger.warning("Rejected invalid impact %r for incident #%s", impact, incident_id)
+        logger.warning(
+            "Rejected invalid impact %r for incident #%s", impact, incident_id
+        )
         return
     with get_db() as db:
         db.execute(

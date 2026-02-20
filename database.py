@@ -500,8 +500,13 @@ def update_incident(incident_id, status, message, created_at=None, resolved_at=N
                 )
 
 
+_VALID_IMPACTS = {"major", "partial", "minor", "none"}
+
+
 def update_incident_impact(incident_id, impact):
     """Update an incident's impact level (used when feeds re-classify)."""
+    if impact not in _VALID_IMPACTS:
+        return
     with get_db() as db:
         db.execute(
             "UPDATE incidents SET impact = ? WHERE id = ?", (impact, incident_id)

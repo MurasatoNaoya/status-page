@@ -25,6 +25,19 @@ def poll_statuspage_api(feed_config):
     component_map = feed_config.get("components", {})
     results = []
 
+    def _match_component(name):
+        """Match a component name against our map.
+
+        Handles both exact matches (e.g. "Actions") and prefixed
+        sub-components (e.g. "Quay.io - API" matches "Quay.io").
+        """
+        if name in component_map:
+            return component_map[name]
+        for ext_name, our_name in component_map.items():
+            if name.startswith(ext_name + " ") or name.startswith(ext_name + " -"):
+                return our_name
+        return None
+
     try:
         # Fetch components for current status
         resp = SESSION.get(f"{base_url}/components.json", timeout=TIMEOUT)
@@ -33,11 +46,11 @@ def poll_statuspage_api(feed_config):
 
         component_status = {}
         for comp in components:
-            if comp["name"] in component_map:
-                our_name = component_map[comp["name"]]
+            matched = _match_component(comp["name"])
+            if matched:
                 # Statuspage statuses: operational, degraded_performance,
                 # partial_outage, major_outage, under_maintenance
-                component_status[our_name] = comp["status"]
+                component_status[matched] = comp["status"]
 
         # Fetch recent incidents
         resp = SESSION.get(f"{base_url}/incidents.json", timeout=TIMEOUT)
@@ -49,18 +62,23 @@ def poll_statuspage_api(feed_config):
             affected_components = set()
             for update in inc.get("incident_updates", []):
                 for ac in update.get("affected_components", []) or []:
-                    if ac.get("name") in component_map:
-                        affected_components.add(component_map[ac["name"]])
+                    matched = _match_component(ac.get("name", ""))
+                    if matched:
+                        affected_components.add(matched)
 
             # Also check top-level components field
             for comp in inc.get("components", []) or []:
-                if comp.get("name") in component_map:
-                    affected_components.add(component_map[comp["name"]])
+                matched = _match_component(comp.get("name", ""))
+                if matched:
+                    affected_components.add(matched)
 
             if not affected_components:
                 # Check if the incident name mentions any of our services
+                # Use the base name (before any dot suffix) for broader matching
+                inc_name_lower = inc.get("name", "").lower()
                 for ext_name, our_name in component_map.items():
-                    if ext_name.lower() in inc.get("name", "").lower():
+                    base_name = ext_name.split(".")[0].lower()
+                    if ext_name.lower() in inc_name_lower or base_name in inc_name_lower:
                         affected_components.add(our_name)
 
             if affected_components:

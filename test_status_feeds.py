@@ -137,6 +137,94 @@ class TestPollStatuspageAPI:
 
         assert results == []
 
+    def test_matches_prefixed_subcomponents(self):
+        """Components like 'Quay.io - API' should match config key 'Quay.io'."""
+        feed = {
+            "name": "Red Hat",
+            "url": "https://status.redhat.com/api/v2",
+            "components": {"Quay.io": "Red Hat Quay.io"},
+        }
+        mock_incidents = {
+            "incidents": [
+                {
+                    "id": "abc456",
+                    "name": "Intermittent Pull & Push Failure",
+                    "status": "resolved",
+                    "impact": "major",
+                    "created_at": "2026-01-05T18:00:00Z",
+                    "resolved_at": "2026-01-05T22:00:00Z",
+                    "components": [{"name": "API"}, {"name": "Registry"}],
+                    "incident_updates": [
+                        {
+                            "status": "resolved",
+                            "body": "Resolved.",
+                            "created_at": "2026-01-05T22:00:00Z",
+                            "affected_components": [
+                                {"name": "Quay.io - API"},
+                                {"name": "Quay.io - Registry"},
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+        with patch("status_feeds.SESSION.get") as mock_get:
+
+            def mock_response(url, **kwargs):
+                resp = MagicMock()
+                resp.raise_for_status = MagicMock()
+                if "components.json" in url:
+                    resp.json.return_value = {"components": []}
+                else:
+                    resp.json.return_value = mock_incidents
+                return resp
+
+            mock_get.side_effect = mock_response
+            results = poll_statuspage_api(feed)
+
+        incidents = [r for r in results if r.get("type") != "component_status"]
+        assert len(incidents) == 1
+        assert "Red Hat Quay.io" in incidents[0]["services"]
+
+    def test_name_fallback_matches_base_name(self):
+        """Incident mentioning 'Quay' should match config key 'Quay.io'."""
+        feed = {
+            "name": "Red Hat",
+            "url": "https://status.redhat.com/api/v2",
+            "components": {"Quay.io": "Red Hat Quay.io"},
+        }
+        mock_incidents = {
+            "incidents": [
+                {
+                    "id": "def789",
+                    "name": "Cascading failures that depend on Quay and AWS",
+                    "status": "resolved",
+                    "impact": "major",
+                    "created_at": "2025-10-20T08:00:00Z",
+                    "resolved_at": "2025-10-20T22:00:00Z",
+                    "components": [{"name": "OpenShift Cluster Manager"}],
+                    "incident_updates": [],
+                }
+            ]
+        }
+        with patch("status_feeds.SESSION.get") as mock_get:
+
+            def mock_response(url, **kwargs):
+                resp = MagicMock()
+                resp.raise_for_status = MagicMock()
+                if "components.json" in url:
+                    resp.json.return_value = {"components": []}
+                else:
+                    resp.json.return_value = mock_incidents
+                return resp
+
+            mock_get.side_effect = mock_response
+            results = poll_statuspage_api(feed)
+
+        incidents = [r for r in results if r.get("type") != "component_status"]
+        assert len(incidents) == 1
+        assert "Red Hat Quay.io" in incidents[0]["services"]
+
 
 MOCK_AZURE_RSS = """<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">

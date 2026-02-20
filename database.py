@@ -1,7 +1,10 @@
+import logging
 import sqlite3
 import os
 from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
+
+logger = logging.getLogger(__name__)
 
 DB_PATH = os.environ.get("STATUS_DB", "status.db")
 
@@ -506,6 +509,7 @@ _VALID_IMPACTS = {"major", "partial", "minor", "none"}
 def update_incident_impact(incident_id, impact):
     """Update an incident's impact level (used when feeds re-classify)."""
     if impact not in _VALID_IMPACTS:
+        logger.warning("Rejected invalid impact %r for incident #%s", impact, incident_id)
         return
     with get_db() as db:
         db.execute(

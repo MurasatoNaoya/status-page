@@ -178,6 +178,29 @@ class TestIncidents:
     def test_external_id_not_found(self):
         assert database.get_incident_by_external_id("nope") is None
 
+    def test_update_incident_impact_valid(self):
+        inc_id = database.create_incident(
+            title="Impact Test", impact="minor", message="msg"
+        )
+        database.update_incident_impact(inc_id, "major")
+        inc = database.get_incident_by_external_id(None)  # fallback
+        with database.get_db() as db:
+            row = db.execute(
+                "SELECT impact FROM incidents WHERE id = ?", (inc_id,)
+            ).fetchone()
+        assert row["impact"] == "major"
+
+    def test_update_incident_impact_rejects_invalid(self):
+        inc_id = database.create_incident(
+            title="Bad Impact", impact="partial", message="msg"
+        )
+        database.update_incident_impact(inc_id, "critical")
+        with database.get_db() as db:
+            row = db.execute(
+                "SELECT impact FROM incidents WHERE id = ?", (inc_id,)
+            ).fetchone()
+        assert row["impact"] == "partial"  # unchanged
+
 
 class TestRecentChecks:
     def test_recent_checks(self):

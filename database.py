@@ -14,7 +14,10 @@ def get_db():
     # timeout=30 acts as PRAGMA busy_timeout=30000 — waits up to 30s if DB is locked
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.OperationalError:
+        pass  # WAL already set or DB momentarily locked — non-critical
     try:
         yield conn
         conn.commit()

@@ -34,7 +34,7 @@ def poll_statuspage_api(feed_config):
         if name in component_map:
             return component_map[name]
         for ext_name, our_name in component_map.items():
-            if name.startswith(ext_name + " ") or name.startswith(ext_name + " -"):
+            if name.startswith(ext_name + " "):
                 return our_name
         return None
 
@@ -78,7 +78,9 @@ def poll_statuspage_api(feed_config):
                 inc_name_lower = inc.get("name", "").lower()
                 for ext_name, our_name in component_map.items():
                     base_name = ext_name.split(".")[0].lower()
-                    if ext_name.lower() in inc_name_lower or base_name in inc_name_lower:
+                    if ext_name.lower() in inc_name_lower or (
+                        len(base_name) >= 4 and base_name in inc_name_lower
+                    ):
                         affected_components.add(our_name)
 
             if affected_components:

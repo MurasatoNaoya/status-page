@@ -183,7 +183,6 @@ class TestIncidents:
             title="Impact Test", impact="minor", message="msg"
         )
         database.update_incident_impact(inc_id, "major")
-        inc = database.get_incident_by_external_id(None)  # fallback
         with database.get_db() as db:
             row = db.execute(
                 "SELECT impact FROM incidents WHERE id = ?", (inc_id,)

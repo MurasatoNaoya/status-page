@@ -1,4 +1,5 @@
 """One-off script to backfill incidents for check failures with no matching incident."""
+
 import database
 from database import get_db
 
@@ -32,7 +33,11 @@ with get_db() as db:
             continue
 
         errors = (r["errors"] or "").split(" | ")
-        error_msg = errors[0].strip() if errors and errors[0].strip() else "Service degradation detected"
+        error_msg = (
+            errors[0].strip()
+            if errors and errors[0].strip()
+            else "Service degradation detected"
+        )
         error_msg = error_msg[:120]
 
         ts = f"{day}T00:00:00Z"

@@ -22,6 +22,7 @@ def _isolated_db(tmp_path, monkeypatch):
     monkeypatch.setenv("STATUS_DB", db_path)
     # Re-import to pick up the new path
     import database
+
     database.DB_PATH = db_path
     database.init_db()
     yield db_path
@@ -34,6 +35,7 @@ def app_client(monkeypatch):
     monkeypatch.setenv("ADMIN_PASS", "testpass")
     # Prevent scheduler from starting during tests
     import app as app_module
+
     app_module.app.config["TESTING"] = True
     with app_module.app.test_client() as client:
         yield client
@@ -42,6 +44,7 @@ def app_client(monkeypatch):
 # ---------------------------------------------------------------------------
 # Playwright E2E fixtures
 # ---------------------------------------------------------------------------
+
 
 def _free_port():
     """Find an available TCP port."""
@@ -82,6 +85,7 @@ def live_server():
 
     # Wait for server to be ready (max 10s)
     import urllib.request
+
     for _ in range(100):
         try:
             urllib.request.urlopen(f"{base_url}/api/health", timeout=1)
@@ -119,7 +123,7 @@ def admin_session(page, live_server):
     page.fill("#username", "admin")
     page.fill("#password", "testpass")
     page.click('button[type="submit"]')
-    page.wait_for_url(f"**/admin")
+    page.wait_for_url("**/admin")
     return page
 
 
@@ -130,6 +134,7 @@ def seed_incidents(live_server, page):
     Logs in first so the API calls are authenticated.
     """
     import json
+
     # Authenticate so the session cookie is set on page.request
     page.goto(f"{live_server}/admin/login")
     page.fill("#username", "admin")
@@ -138,10 +143,26 @@ def seed_incidents(live_server, page):
     page.wait_for_url("**/admin")
 
     incidents = [
-        {"title": "AKS cluster issue", "impact": "critical", "service_name": "Azure Kubernetes Service (AKS)"},
-        {"title": "GitHub Actions degraded", "impact": "major", "service_name": "GitHub Actions"},
-        {"title": "Docker Hub slow pulls", "impact": "minor", "service_name": "Docker Hub"},
-        {"title": "Azure Portal outage", "impact": "critical", "service_name": "Azure Portal"},
+        {
+            "title": "AKS cluster issue",
+            "impact": "critical",
+            "service_name": "Azure Kubernetes Service (AKS)",
+        },
+        {
+            "title": "GitHub Actions degraded",
+            "impact": "major",
+            "service_name": "GitHub Actions",
+        },
+        {
+            "title": "Docker Hub slow pulls",
+            "impact": "minor",
+            "service_name": "Docker Hub",
+        },
+        {
+            "title": "Azure Portal outage",
+            "impact": "critical",
+            "service_name": "Azure Portal",
+        },
         {"title": "GitHub API errors", "impact": "major", "service_name": "github.com"},
     ]
     for inc in incidents:
@@ -150,5 +171,7 @@ def seed_incidents(live_server, page):
             data=json.dumps(inc),
             headers={"Content-Type": "application/json"},
         )
-        assert resp.status == 200 or resp.status == 201, f"Failed to create incident: {resp.status}"
+        assert resp.status == 200 or resp.status == 201, (
+            f"Failed to create incident: {resp.status}"
+        )
     return incidents

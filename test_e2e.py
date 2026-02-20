@@ -15,6 +15,7 @@ pytestmark = pytest.mark.e2e
 
 # ── Loop 1: Smoke Tests ─────────────────────────────────────────────────────
 
+
 class TestSmoke:
     """Basic smoke tests: pages load, assets served, no crashes."""
 
@@ -62,6 +63,7 @@ class TestSmoke:
 
 # ── Loop 2: Theme Toggle ────────────────────────────────────────────────────
 
+
 class TestThemeToggle:
     """Light/dark mode toggle across all pages."""
 
@@ -105,7 +107,9 @@ class TestThemeToggle:
         admin_session.locator(".theme-toggle").click()
         expect(admin_session.locator("html")).to_have_attribute("data-theme", "dark")
 
-    def test_admin_form_text_readable_in_dark_mode(self, page, live_server, admin_session):
+    def test_admin_form_text_readable_in_dark_mode(
+        self, page, live_server, admin_session
+    ):
         admin_session.locator(".theme-toggle").click()
         expect(admin_session.locator("html")).to_have_attribute("data-theme", "dark")
         # Wait for CSS transition to finish before checking computed style
@@ -120,6 +124,7 @@ class TestThemeToggle:
 
 # ── Loop 3: Filter Pills ────────────────────────────────────────────────────
 
+
 class TestFilterPills:
     """Category and impact filter pills on the index page."""
 
@@ -128,7 +133,9 @@ class TestFilterPills:
         all_btn = page.locator('.filter-pill[data-filter="all"]')
         expect(all_btn).to_have_class(re.compile("active"))
 
-    def test_category_filter_hides_non_matching(self, page, live_server, seed_incidents):
+    def test_category_filter_hides_non_matching(
+        self, page, live_server, seed_incidents
+    ):
         page.goto(live_server)
         page.locator('.filter-pill[data-filter="azure"]').click()
         # Azure incidents should be visible
@@ -143,7 +150,7 @@ class TestFilterPills:
     def test_impact_filter_shows_only_matching(self, page, live_server, seed_incidents):
         page.goto(live_server)
         page.locator('.filter-pill[data-filter="critical"]').click()
-        visible = page.locator('.incident:visible')
+        visible = page.locator(".incident:visible")
         for i in range(visible.count()):
             assert visible.nth(i).get_attribute("data-impact") == "critical"
 
@@ -152,7 +159,7 @@ class TestFilterPills:
         page.locator('.filter-pill[data-filter="azure"]').click()
         page.locator('.filter-pill[data-filter="all"]').click()
         # All incidents should be visible again
-        all_inc = page.locator('.incident[data-category]')
+        all_inc = page.locator(".incident[data-category]")
         for i in range(min(all_inc.count(), 5)):
             expect(all_inc.nth(i)).to_be_visible()
 
@@ -171,6 +178,7 @@ class TestFilterPills:
 
 
 # ── Loop 4: Expand/Collapse + Tooltips ─────────────────────────────────────
+
 
 class TestExpandCollapse:
     """Animated expand/collapse on service groups and incident details."""
@@ -194,7 +202,9 @@ class TestExpandCollapse:
         summary.click()
         expect(details).not_to_have_attribute("open", "")
 
-    def test_incident_content_visible_after_expand(self, page, live_server, seed_incidents):
+    def test_incident_content_visible_after_expand(
+        self, page, live_server, seed_incidents
+    ):
         page.goto(live_server)
         details = page.locator(".incident-details").first
         body = details.locator(".incident-updates-body")
@@ -202,7 +212,9 @@ class TestExpandCollapse:
         expect(details).to_have_attribute("open", "")
         expect(body).to_be_visible()
 
-    def test_incident_content_hidden_after_collapse(self, page, live_server, seed_incidents):
+    def test_incident_content_hidden_after_collapse(
+        self, page, live_server, seed_incidents
+    ):
         page.goto(live_server)
         details = page.locator(".incident-details").first
         content = details.locator(".incident-updates-body")
@@ -243,7 +255,9 @@ class TestExpandCollapse:
         page.locator(".overall-status").click()
         expect(details).not_to_have_attribute("open", "")
 
-    def test_multiple_incidents_can_expand_independently(self, page, live_server, seed_incidents):
+    def test_multiple_incidents_can_expand_independently(
+        self, page, live_server, seed_incidents
+    ):
         page.goto(live_server)
         all_details = page.locator(".incident-details")
         if all_details.count() < 2:
@@ -256,7 +270,9 @@ class TestExpandCollapse:
         # Both should still be open
         expect(all_details.nth(0)).to_have_attribute("open", "")
 
-    def test_no_js_errors_during_expand_collapse(self, page, live_server, seed_incidents):
+    def test_no_js_errors_during_expand_collapse(
+        self, page, live_server, seed_incidents
+    ):
         errors = []
         page.on("pageerror", lambda e: errors.append(str(e)))
         page.goto(live_server)
@@ -279,7 +295,9 @@ class TestTooltips:
         tip = page.locator("#shared-tip")
         # Tooltip should exist but be hidden
         expect(tip).to_be_attached()
-        display = page.evaluate("getComputedStyle(document.getElementById('shared-tip')).display")
+        display = page.evaluate(
+            "getComputedStyle(document.getElementById('shared-tip')).display"
+        )
         assert display == "none" or tip.is_hidden()
 
     def test_tooltip_shows_on_hover(self, page, live_server):
@@ -316,6 +334,7 @@ class TestTooltips:
 
 
 # ── Loop 5: Admin Login Flow ───────────────────────────────────────────────
+
 
 class TestAdminLogin:
     """Admin login, logout, and session management."""
@@ -366,10 +385,13 @@ class TestAdminLogin:
 
     def test_admin_panel_shows_declare_section(self, page, live_server, admin_session):
         expect(admin_session.locator(".declare-section")).to_be_visible()
-        expect(admin_session.locator(".declare-section h2")).to_have_text("Declare Incident")
+        expect(admin_session.locator(".declare-section h2")).to_have_text(
+            "Declare Incident"
+        )
 
 
 # ── Loop 6: Admin Incident Declaration + Update ────────────────────────────
+
 
 class TestAdminIncidentManagement:
     """Declaring and updating incidents from the admin panel."""
@@ -393,7 +415,9 @@ class TestAdminIncidentManagement:
         admin_session.wait_for_url("**/admin")
         expect(admin_session.locator(".flash-msg")).to_be_visible()
 
-    def test_declared_incident_appears_in_active(self, page, live_server, admin_session):
+    def test_declared_incident_appears_in_active(
+        self, page, live_server, admin_session
+    ):
         admin_session.on("dialog", lambda d: d.accept())
         admin_session.fill('input[name="title"]', "Active Test Incident")
         admin_session.select_option('select[name="impact"]', "major")
@@ -438,7 +462,9 @@ class TestAdminIncidentManagement:
         # (or show "No active incidents")
         expect(admin_session.locator(".flash-msg")).to_be_visible()
 
-    def test_declared_incident_visible_on_status_page(self, page, live_server, admin_session):
+    def test_declared_incident_visible_on_status_page(
+        self, page, live_server, admin_session
+    ):
         admin_session.on("dialog", lambda d: d.accept())
         admin_session.fill('input[name="title"]', "Visible On Status Page")
         admin_session.select_option('select[name="impact"]', "critical")
@@ -460,12 +486,15 @@ class TestAdminIncidentManagement:
 
 # ── Loop 7: Admin Backfill + Metrics ───────────────────────────────────────
 
+
 class TestAdminBackfillAndMetrics:
     """Backfill section and metrics page tests."""
 
     def test_backfill_section_visible(self, page, live_server, admin_session):
         expect(admin_session.locator(".backfill-section")).to_be_visible()
-        expect(admin_session.locator(".backfill-section h2")).to_have_text("Data Backfill")
+        expect(admin_session.locator(".backfill-section h2")).to_have_text(
+            "Data Backfill"
+        )
 
     def test_backfill_button_exists(self, page, live_server, admin_session):
         expect(admin_session.locator(".btn-backfill")).to_be_visible()
@@ -476,7 +505,9 @@ class TestAdminBackfillAndMetrics:
 
     def test_integrations_section_visible(self, page, live_server, admin_session):
         expect(admin_session.locator(".integrations")).to_be_visible()
-        expect(admin_session.locator(".integrations h3")).to_have_text("Alert Integrations")
+        expect(admin_session.locator(".integrations h3")).to_have_text(
+            "Alert Integrations"
+        )
 
     def test_integration_rows_present(self, page, live_server, admin_session):
         rows = admin_session.locator(".integration-row")
@@ -507,6 +538,7 @@ class TestAdminBackfillAndMetrics:
 
 
 # ── Loop 8: Edge Cases + Error Handling ────────────────────────────────────
+
 
 class TestEdgeCases:
     """404 pages, empty states, missing data, error conditions."""
@@ -556,7 +588,9 @@ class TestEdgeCases:
         resp = page.request.get(f"{live_server}/api/health")
         headers = resp.headers
         content_type = headers.get("content-type", "")
-        assert "json" in content_type.lower(), f"Expected JSON content-type, got {content_type}"
+        assert "json" in content_type.lower(), (
+            f"Expected JSON content-type, got {content_type}"
+        )
 
     def test_static_css_serves(self, page, live_server):
         resp = page.request.get(f"{live_server}/static/style.css")
@@ -566,6 +600,7 @@ class TestEdgeCases:
 
 
 # ── Loop 9: Accessibility + Responsive ─────────────────────────────────────
+
 
 class TestAccessibility:
     """ARIA labels, keyboard nav, semantic HTML, responsive layout."""
@@ -617,6 +652,7 @@ class TestAccessibility:
 
 # ── Loop 10: Performance + Full Lifecycle ──────────────────────────────────
 
+
 class TestPerformanceAndLifecycle:
     """Page load performance and full incident lifecycle E2E."""
 
@@ -625,7 +661,9 @@ class TestPerformanceAndLifecycle:
         page.goto(live_server)
         page.wait_for_load_state("networkidle")
         elapsed_ms = (time.monotonic() - start) * 1000
-        assert elapsed_ms < 5000, f"Index took {elapsed_ms:.0f}ms to load (expected < 5000ms)"
+        assert elapsed_ms < 5000, (
+            f"Index took {elapsed_ms:.0f}ms to load (expected < 5000ms)"
+        )
 
     def test_full_incident_lifecycle(self, page, live_server, admin_session):
         """Create incident -> verify on status page -> update -> resolve -> verify resolved."""

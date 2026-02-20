@@ -66,32 +66,38 @@ def poll_statuspage_api(feed_config):
             if affected_components:
                 updates = []
                 for upd in inc.get("incident_updates", []):
-                    updates.append({
-                        "status": upd["status"],
-                        "message": upd.get("body", ""),
-                        "created_at": upd["created_at"],
-                    })
+                    updates.append(
+                        {
+                            "status": upd["status"],
+                            "message": upd.get("body", ""),
+                            "created_at": upd["created_at"],
+                        }
+                    )
 
-                results.append({
-                    "services": list(affected_components),
-                    "title": inc["name"],
-                    "status": inc["status"],
-                    "impact": inc.get("impact", "minor"),
-                    "created_at": inc["created_at"],
-                    "resolved_at": inc.get("resolved_at"),
-                    "external_id": inc["id"],
-                    "source": feed_config["name"],
-                    "updates": updates,
-                })
+                results.append(
+                    {
+                        "services": list(affected_components),
+                        "title": inc["name"],
+                        "status": inc["status"],
+                        "impact": inc.get("impact", "minor"),
+                        "created_at": inc["created_at"],
+                        "resolved_at": inc.get("resolved_at"),
+                        "external_id": inc["id"],
+                        "source": feed_config["name"],
+                        "updates": updates,
+                    }
+                )
 
         # Also return current component status
         for our_name, status in component_status.items():
-            results.append({
-                "type": "component_status",
-                "service_name": our_name,
-                "status": status,
-                "source": feed_config["name"],
-            })
+            results.append(
+                {
+                    "type": "component_status",
+                    "service_name": our_name,
+                    "status": status,
+                    "source": feed_config["name"],
+                }
+            )
 
     except Exception as e:
         logger.error("Failed to poll %s status API: %s", feed_config["name"], e)
@@ -185,7 +191,7 @@ def _match_azure_services(title, description=""):
     matched = set()
     for keyword, svc_name in AZURE_SERVICE_KEYWORDS.items():
         if len(keyword) <= 4:
-            if re.search(r'\b' + re.escape(keyword) + r'\b', combined):
+            if re.search(r"\b" + re.escape(keyword) + r"\b", combined):
                 matched.add(svc_name)
         else:
             if keyword in combined:
@@ -215,8 +221,7 @@ def poll_azure_rss(feed_config):
             # Skip incidents specific to excluded regions
             combined = (title + " " + description).lower()
             region_specific = any(
-                r in combined and "uk south" not in combined
-                for r in exclude_regions
+                r in combined and "uk south" not in combined for r in exclude_regions
             )
             if region_specific:
                 continue
@@ -233,9 +238,15 @@ def poll_azure_rss(feed_config):
             title_lower = title.lower()
             desc_lower = description.lower() if description else ""
             combined_lower = title_lower + " " + desc_lower
-            if any(w in combined_lower for w in ["outage", "unavailable", "down", "loss of service"]):
+            if any(
+                w in combined_lower
+                for w in ["outage", "unavailable", "down", "loss of service"]
+            ):
                 impact = "critical"
-            elif any(w in combined_lower for w in ["failure", "disruption", "unable", "errors", "not working"]):
+            elif any(
+                w in combined_lower
+                for w in ["failure", "disruption", "unable", "errors", "not working"]
+            ):
                 impact = "major"
             else:
                 impact = "minor"
@@ -244,35 +255,48 @@ def poll_azure_rss(feed_config):
             matched_services = _match_azure_services(title, description)
 
             # Determine status from content — don't assume all RSS items are resolved
-            is_resolved = any(w in desc_lower for w in [
-                "resolved", "mitigated", "remediated", "recovered",
-                "returned to normal", "issue has been fixed",
-            ])
+            is_resolved = any(
+                w in desc_lower
+                for w in [
+                    "resolved",
+                    "mitigated",
+                    "remediated",
+                    "recovered",
+                    "returned to normal",
+                    "issue has been fixed",
+                ]
+            )
             inc_status = "resolved" if is_resolved else "investigating"
 
-            updates = [{
-                "status": "investigating",
-                "message": description[:500] if description else title,
-                "created_at": created_at,
-            }]
-            if is_resolved:
-                updates.append({
-                    "status": "resolved",
-                    "message": "Incident resolved.",
+            updates = [
+                {
+                    "status": "investigating",
+                    "message": description[:500] if description else title,
                     "created_at": created_at,
-                })
+                }
+            ]
+            if is_resolved:
+                updates.append(
+                    {
+                        "status": "resolved",
+                        "message": "Incident resolved.",
+                        "created_at": created_at,
+                    }
+                )
 
-            results.append({
-                "services": matched_services,
-                "title": title,
-                "status": inc_status,
-                "impact": impact,
-                "created_at": created_at,
-                "resolved_at": created_at if is_resolved else None,
-                "external_id": f"azure-rss-{hashlib.sha256((title + pub_date).encode()).hexdigest()[:16]}",
-                "source": "Azure",
-                "updates": updates,
-            })
+            results.append(
+                {
+                    "services": matched_services,
+                    "title": title,
+                    "status": inc_status,
+                    "impact": impact,
+                    "created_at": created_at,
+                    "resolved_at": created_at if is_resolved else None,
+                    "external_id": f"azure-rss-{hashlib.sha256((title + pub_date).encode()).hexdigest()[:16]}",
+                    "source": "Azure",
+                    "updates": updates,
+                }
+            )
 
     except Exception as e:
         logger.error("Failed to poll Azure RSS: %s", e)
@@ -291,8 +315,9 @@ def poll_azure_rss(feed_config):
                     results.append(inc)
             with _history_lock:
                 _history_last_scraped[feed_config["name"]] = datetime.now(timezone.utc)
-            logger.info("Scraped %d incidents from Azure history page",
-                        len(history_incidents))
+            logger.info(
+                "Scraped %d incidents from Azure history page", len(history_incidents)
+            )
         except Exception as e:
             logger.error("Failed to scrape Azure history page: %s", e)
 
@@ -315,20 +340,24 @@ def _parse_azure_history(html, exclude_regions=None):
 
     for block in blocks[1:]:
         # Tracking ID
-        tid_m = re.search(r'Tracking ID:\s*([^<\s]+)', block)
+        tid_m = re.search(r"Tracking ID:\s*([^<\s]+)", block)
         tid = tid_m.group(1) if tid_m else None
         if not tid:
             continue
 
         # Title
-        title_m = re.search(r'incident-history-title[^>]*>(.*?)</div>', block, re.DOTALL)
-        title = re.sub(r'<[^>]+>', '', title_m.group(1)).strip() if title_m else "Unknown"
+        title_m = re.search(
+            r"incident-history-title[^>]*>(.*?)</div>", block, re.DOTALL
+        )
+        title = (
+            re.sub(r"<[^>]+>", "", title_m.group(1)).strip() if title_m else "Unknown"
+        )
 
         # Body text
-        body_m = re.search(r'card-body[^>]*>(.*?)</div>\s*</div>', block, re.DOTALL)
-        body = re.sub(r'<[^>]+>', ' ', body_m.group(1)).strip() if body_m else ""
+        body_m = re.search(r"card-body[^>]*>(.*?)</div>\s*</div>", block, re.DOTALL)
+        body = re.sub(r"<[^>]+>", " ", body_m.group(1)).strip() if body_m else ""
         # Clean up whitespace
-        body = re.sub(r'\s+', ' ', body)
+        body = re.sub(r"\s+", " ", body)
 
         combined = (title + " " + body).lower()
         title_lower = title.lower()
@@ -340,7 +369,9 @@ def _parse_azure_history(html, exclude_regions=None):
         title_region_specific = any(r in title_lower for r in exclude_lower)
         if title_region_specific:
             continue
-        is_global = any(kw in combined for kw in ["all regions", "multiple regions", "global"])
+        is_global = any(
+            kw in combined for kw in ["all regions", "multiple regions", "global"]
+        )
         region_specific = any(r in combined for r in exclude_lower)
         if region_specific and not is_global:
             continue
@@ -359,14 +390,18 @@ def _parse_azure_history(html, exclude_regions=None):
         created_at = None
         resolved_at = None
         span_m = re.search(
-            r'[Bb]etween\s+(\d{1,2}:\d{2})\s*(?:\xa0)?UTC\s+on\s+(\d{1,2}\s+\w+\s+\d{4})'
-            r'\s+and\s+(\d{1,2}:\d{2})\s*(?:\xa0)?UTC\s+on\s+(\d{1,2}\s+\w+\s+\d{4})',
+            r"[Bb]etween\s+(\d{1,2}:\d{2})\s*(?:\xa0)?UTC\s+on\s+(\d{1,2}\s+\w+\s+\d{4})"
+            r"\s+and\s+(\d{1,2}:\d{2})\s*(?:\xa0)?UTC\s+on\s+(\d{1,2}\s+\w+\s+\d{4})",
             body,
         )
         if span_m:
             try:
-                dt_start = datetime.strptime(f"{span_m.group(2)} {span_m.group(1)}", "%d %B %Y %H:%M")
-                dt_end = datetime.strptime(f"{span_m.group(4)} {span_m.group(3)}", "%d %B %Y %H:%M")
+                dt_start = datetime.strptime(
+                    f"{span_m.group(2)} {span_m.group(1)}", "%d %B %Y %H:%M"
+                )
+                dt_end = datetime.strptime(
+                    f"{span_m.group(4)} {span_m.group(3)}", "%d %B %Y %H:%M"
+                )
                 created_at = dt_start.strftime("%Y-%m-%dT%H:%M:%SZ")
                 resolved_at = dt_end.strftime("%Y-%m-%dT%H:%M:%SZ")
             except (ValueError, TypeError):
@@ -374,30 +409,38 @@ def _parse_azure_history(html, exclude_regions=None):
         if not created_at:
             # Same-day: "Between HH:MM UTC and HH:MM UTC on DD Month YYYY"
             same_m = re.search(
-                r'[Bb]etween\s+(\d{1,2}:\d{2})\s*(?:\xa0)?UTC\s+and\s+(\d{1,2}:\d{2})\s*(?:\xa0)?UTC'
-                r'\s+on\s+(\d{1,2}\s+\w+\s+\d{4})',
+                r"[Bb]etween\s+(\d{1,2}:\d{2})\s*(?:\xa0)?UTC\s+and\s+(\d{1,2}:\d{2})\s*(?:\xa0)?UTC"
+                r"\s+on\s+(\d{1,2}\s+\w+\s+\d{4})",
                 body,
             )
             if same_m:
                 try:
-                    dt_start = datetime.strptime(f"{same_m.group(3)} {same_m.group(1)}", "%d %B %Y %H:%M")
-                    dt_end = datetime.strptime(f"{same_m.group(3)} {same_m.group(2)}", "%d %B %Y %H:%M")
+                    dt_start = datetime.strptime(
+                        f"{same_m.group(3)} {same_m.group(1)}", "%d %B %Y %H:%M"
+                    )
+                    dt_end = datetime.strptime(
+                        f"{same_m.group(3)} {same_m.group(2)}", "%d %B %Y %H:%M"
+                    )
                     created_at = dt_start.strftime("%Y-%m-%dT%H:%M:%SZ")
                     resolved_at = dt_end.strftime("%Y-%m-%dT%H:%M:%SZ")
                 except (ValueError, TypeError):
                     pass
         if not created_at:
             # Fallback: single timestamp "HH:MM UTC on DD Month YYYY"
-            date_m = re.search(r'(\d{1,2}:\d{2})\s*(?:\xa0)?UTC\s+on\s+(\d{1,2}\s+\w+\s+\d{4})', body)
+            date_m = re.search(
+                r"(\d{1,2}:\d{2})\s*(?:\xa0)?UTC\s+on\s+(\d{1,2}\s+\w+\s+\d{4})", body
+            )
             if date_m:
                 try:
-                    dt = datetime.strptime(f"{date_m.group(2)} {date_m.group(1)}", "%d %B %Y %H:%M")
+                    dt = datetime.strptime(
+                        f"{date_m.group(2)} {date_m.group(1)}", "%d %B %Y %H:%M"
+                    )
                     created_at = dt.strftime("%Y-%m-%dT%H:%M:%SZ")
                 except (ValueError, TypeError):
                     pass
         if not created_at:
             # Last resort: bare date "08 December 2025"
-            date_m2 = re.search(r'(\d{1,2}\s+\w+\s+\d{4})', body)
+            date_m2 = re.search(r"(\d{1,2}\s+\w+\s+\d{4})", body)
             if date_m2:
                 try:
                     dt = datetime.strptime(date_m2.group(1), "%d %B %Y")
@@ -408,7 +451,9 @@ def _parse_azure_history(html, exclude_regions=None):
             resolved_at = created_at
 
         # Determine impact from keywords
-        if any(w in combined for w in ["outage", "unavailable", "down", "loss of service"]):
+        if any(
+            w in combined for w in ["outage", "unavailable", "down", "loss of service"]
+        ):
             impact = "critical"
         elif any(w in combined for w in ["failure", "disruption", "unable", "errors"]):
             impact = "major"
@@ -421,21 +466,25 @@ def _parse_azure_history(html, exclude_regions=None):
         # Single resolved update with the PIR summary.
         # poll_status_feed uses updates[-1] as the initial message.
         summary = clean_body[:500].strip()
-        incidents.append({
-            "services": matched_services,
-            "title": title,
-            "status": "resolved",
-            "impact": impact,
-            "created_at": created_at,
-            "resolved_at": resolved_at,
-            "external_id": f"azure-pir-{tid}",
-            "source": "Azure",
-            "updates": [{
+        incidents.append(
+            {
+                "services": matched_services,
+                "title": title,
                 "status": "resolved",
-                "message": summary,
+                "impact": impact,
                 "created_at": created_at,
-            }],
-        })
+                "resolved_at": resolved_at,
+                "external_id": f"azure-pir-{tid}",
+                "source": "Azure",
+                "updates": [
+                    {
+                        "status": "resolved",
+                        "message": summary,
+                        "created_at": created_at,
+                    }
+                ],
+            }
+        )
 
     return incidents
 
@@ -676,8 +725,10 @@ def _parse_statusio_history(html, component_map, source_name="Status.io"):
             continue
 
         # Title
-        title_m = re.search(r'panel-title.*?<a[^>]*>(.*?)</a>', block, re.DOTALL)
-        title = re.sub(r'<[^>]+>', '', title_m.group(1)).strip() if title_m else "Unknown"
+        title_m = re.search(r"panel-title.*?<a[^>]*>(.*?)</a>", block, re.DOTALL)
+        title = (
+            re.sub(r"<[^>]+>", "", title_m.group(1)).strip() if title_m else "Unknown"
+        )
 
         # Severity text
         sev_m = re.search(r'status_description">(.*?)<', block)
@@ -687,7 +738,8 @@ def _parse_statusio_history(html, component_map, source_name="Status.io"):
         # Components
         comp_m = re.search(
             r'>Components\s*</p>.*?incident_section event_inner_text">(.*?)</p>',
-            block, re.DOTALL,
+            block,
+            re.DOTALL,
         )
         affected = set()
         if comp_m:
@@ -700,12 +752,14 @@ def _parse_statusio_history(html, component_map, source_name="Status.io"):
         updates = []
         update_pattern = (
             r'incident_time">(.*?)</strong>'
-            r'.*?incident_update_status.*?>(.*?)</strong>'
-            r'.*?incident_message_details[^>]*>(.*?)</span>'
+            r".*?incident_update_status.*?>(.*?)</strong>"
+            r".*?incident_message_details[^>]*>(.*?)</span>"
         )
-        for time_html, status_html, msg_html in re.findall(update_pattern, block, re.DOTALL):
+        for time_html, status_html, msg_html in re.findall(
+            update_pattern, block, re.DOTALL
+        ):
             # Extract UTC time (second line of the timestamp pair)
-            times = re.findall(r'(\w+ \d+, \d{4} \d+:\d+ \w+)', time_html)
+            times = re.findall(r"(\w+ \d+, \d{4} \d+:\d+ \w+)", time_html)
             utc_time = times[1] if len(times) > 1 else (times[0] if times else "")
             # Parse to ISO format
             created_at = utc_time
@@ -715,15 +769,17 @@ def _parse_statusio_history(html, component_map, source_name="Status.io"):
             except (ValueError, TypeError):
                 pass
 
-            status_text = re.sub(r'<[^>]+>', '', status_html).strip().lower()
+            status_text = re.sub(r"<[^>]+>", "", status_html).strip().lower()
             status = _STATUSIO_UPDATE_STATUS_MAP.get(status_text, "investigating")
-            message = re.sub(r'<[^>]+>', '', msg_html).strip()
+            message = re.sub(r"<[^>]+>", "", msg_html).strip()
 
-            updates.append({
-                "status": status,
-                "message": message[:500],
-                "created_at": created_at,
-            })
+            updates.append(
+                {
+                    "status": status,
+                    "message": message[:500],
+                    "created_at": created_at,
+                }
+            )
 
         # Keep newest-first order (matching Statuspage API convention).
         # poll_status_feed expects updates[-1] = oldest, updates[0] = newest.
@@ -740,17 +796,19 @@ def _parse_statusio_history(html, component_map, source_name="Status.io"):
         # Oldest update is the created_at (last in newest-first list)
         created_at = updates[-1]["created_at"] if updates else None
 
-        incidents.append({
-            "services": list(affected) if affected else None,
-            "title": title,
-            "status": "resolved" if is_resolved else "investigating",
-            "impact": impact,
-            "created_at": created_at,
-            "resolved_at": resolved_at,
-            "external_id": inc_id,
-            "source": source_name,
-            "updates": updates,
-        })
+        incidents.append(
+            {
+                "services": list(affected) if affected else None,
+                "title": title,
+                "status": "resolved" if is_resolved else "investigating",
+                "impact": impact,
+                "created_at": created_at,
+                "resolved_at": resolved_at,
+                "external_id": inc_id,
+                "source": source_name,
+                "updates": updates,
+            }
+        )
 
     return incidents
 
@@ -774,13 +832,17 @@ def poll_statusio_api(feed_config):
         for comp in data.get("status", []):
             if comp["name"] in component_map:
                 our_name = component_map[comp["name"]]
-                status_str = _STATUSIO_STATUS_MAP.get(comp["status_code"], "operational")
-                results.append({
-                    "type": "component_status",
-                    "service_name": our_name,
-                    "status": status_str,
-                    "source": feed_config["name"],
-                })
+                status_str = _STATUSIO_STATUS_MAP.get(
+                    comp["status_code"], "operational"
+                )
+                results.append(
+                    {
+                        "type": "component_status",
+                        "service_name": our_name,
+                        "status": status_str,
+                        "source": feed_config["name"],
+                    }
+                )
 
         # Active incidents
         for inc in data.get("incidents", []):
@@ -796,26 +858,30 @@ def poll_statusio_api(feed_config):
                 code = msg.get("status", 100)
                 if code > worst_code:
                     worst_code = code
-                updates.append({
-                    "status": "resolved" if code == 100 else "investigating",
-                    "message": msg.get("details", ""),
-                    "created_at": msg.get("datetime"),
-                })
+                updates.append(
+                    {
+                        "status": "resolved" if code == 100 else "investigating",
+                        "message": msg.get("details", ""),
+                        "created_at": msg.get("datetime"),
+                    }
+                )
 
             is_resolved = bool(inc.get("datetime_close"))
             impact = _statusio_code_to_impact(worst_code)
 
-            results.append({
-                "services": list(affected) if affected else None,
-                "title": inc.get("name", "Unknown incident"),
-                "status": "resolved" if is_resolved else "investigating",
-                "impact": impact,
-                "created_at": inc.get("datetime_open"),
-                "resolved_at": inc.get("datetime_close") or None,
-                "external_id": inc.get("_id"),
-                "source": feed_config["name"],
-                "updates": updates,
-            })
+            results.append(
+                {
+                    "services": list(affected) if affected else None,
+                    "title": inc.get("name", "Unknown incident"),
+                    "status": "resolved" if is_resolved else "investigating",
+                    "impact": impact,
+                    "created_at": inc.get("datetime_open"),
+                    "resolved_at": inc.get("datetime_close") or None,
+                    "external_id": inc.get("_id"),
+                    "source": feed_config["name"],
+                    "updates": updates,
+                }
+            )
 
         # Scrape incident history page for resolved incidents.
         # Status.io's API only returns active incidents, so history page is
@@ -825,18 +891,27 @@ def poll_statusio_api(feed_config):
             try:
                 hist_resp = SESSION.get(history_url, timeout=TIMEOUT)
                 hist_resp.raise_for_status()
-                history_incidents = _parse_statusio_history(hist_resp.text, component_map, feed_config["name"])
+                history_incidents = _parse_statusio_history(
+                    hist_resp.text, component_map, feed_config["name"]
+                )
                 # Don't duplicate incidents already in the API response
                 seen_ids = {r.get("external_id") for r in results}
                 for inc in history_incidents:
                     if inc["external_id"] not in seen_ids:
                         results.append(inc)
                 with _history_lock:
-                    _history_last_scraped[feed_config["name"]] = datetime.now(timezone.utc)
-                logger.info("Scraped %d incidents from %s history page",
-                            len(history_incidents), feed_config["name"])
+                    _history_last_scraped[feed_config["name"]] = datetime.now(
+                        timezone.utc
+                    )
+                logger.info(
+                    "Scraped %d incidents from %s history page",
+                    len(history_incidents),
+                    feed_config["name"],
+                )
             except Exception as e:
-                logger.error("Failed to scrape %s history page: %s", feed_config["name"], e)
+                logger.error(
+                    "Failed to scrape %s history page: %s", feed_config["name"], e
+                )
 
     except Exception as e:
         logger.error("Failed to poll %s Status.io API: %s", feed_config["name"], e)

@@ -63,13 +63,15 @@ def check_script(service):
     try:
         start = time.monotonic()
         args = shlex.split(command) if isinstance(command, str) else command
-        result = subprocess.run(
-            args, capture_output=True, text=True, timeout=timeout
-        )
+        result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
         elapsed_ms = (time.monotonic() - start) * 1000
         if result.returncode == 0:
             return "up", elapsed_ms, None
-        return "down", elapsed_ms, result.stderr.strip() or f"Exit code {result.returncode}"
+        return (
+            "down",
+            elapsed_ms,
+            result.stderr.strip() or f"Exit code {result.returncode}",
+        )
     except subprocess.TimeoutExpired:
         return "down", None, "Script timed out"
     except Exception as e:
@@ -135,21 +137,25 @@ def check_dns_bar(targets):
             start = time.monotonic()
             socket.getaddrinfo(hostname, None)
             elapsed_ms = (time.monotonic() - start) * 1000
-            results.append({
-                "label": label,
-                "hostname": hostname,
-                "status": "up",
-                "ms": round(elapsed_ms, 1),
-                "error": None,
-            })
+            results.append(
+                {
+                    "label": label,
+                    "hostname": hostname,
+                    "status": "up",
+                    "ms": round(elapsed_ms, 1),
+                    "error": None,
+                }
+            )
         except socket.gaierror as e:
-            results.append({
-                "label": label,
-                "hostname": hostname,
-                "status": "down",
-                "ms": None,
-                "error": str(e),
-            })
+            results.append(
+                {
+                    "label": label,
+                    "hostname": hostname,
+                    "status": "down",
+                    "ms": None,
+                    "error": str(e),
+                }
+            )
     return results
 
 

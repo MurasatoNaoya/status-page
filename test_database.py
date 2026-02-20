@@ -72,9 +72,11 @@ class TestIncidents:
         assert inc_id > 0
 
     def test_create_incident_with_service(self):
-        inc_id = database.create_incident(
-            title="GitHub Down", impact="major", message="Investigating",
-            service_name="GitHub API"
+        database.create_incident(
+            title="GitHub Down",
+            impact="major",
+            message="Investigating",
+            service_name="GitHub API",
         )
         active = database.get_active_incident_for_service("GitHub API")
         assert active is not None
@@ -113,16 +115,14 @@ class TestIncidents:
 
     def test_resolved_incident_not_active(self):
         inc_id = database.create_incident(
-            title="Temp", impact="minor", message="msg",
-            service_name="TempSvc"
+            title="Temp", impact="minor", message="msg", service_name="TempSvc"
         )
         database.update_incident(inc_id, status="resolved", message="done")
         assert database.get_active_incident_for_service("TempSvc") is None
 
     def test_external_id_lookup(self):
         database.create_incident(
-            title="External", impact="minor", message="msg",
-            external_id="ext-123"
+            title="External", impact="minor", message="msg", external_id="ext-123"
         )
         found = database.get_incident_by_external_id("ext-123")
         assert found is not None
@@ -169,8 +169,11 @@ class TestGetIncidentsByDay:
     def test_single_day_incident(self):
         today = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         database.create_incident(
-            title="Today's issue", service_name="Svc",
-            created_at=today, resolved_at=today, status="resolved"
+            title="Today's issue",
+            service_name="Svc",
+            created_at=today,
+            resolved_at=today,
+            status="resolved",
         )
         by_day = database.get_incidents_by_day()
         today_str = datetime.now(timezone.utc).date().isoformat()
@@ -183,8 +186,11 @@ class TestGetIncidentsByDay:
         start = (now - timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
         end = (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
         database.create_incident(
-            title="Multi-day", service_name="Svc",
-            created_at=start, resolved_at=end, status="resolved"
+            title="Multi-day",
+            service_name="Svc",
+            created_at=start,
+            resolved_at=end,
+            status="resolved",
         )
         by_day = database.get_incidents_by_day()
         # Should appear on day -3, -2, and -1
@@ -195,10 +201,14 @@ class TestGetIncidentsByDay:
             assert "Multi-day" in titles
 
     def test_unresolved_incident_extends_to_today(self):
-        start = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        start = (datetime.now(timezone.utc) - timedelta(days=2)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
         database.create_incident(
-            title="Ongoing", service_name="Svc",
-            created_at=start, status="investigating"
+            title="Ongoing",
+            service_name="Svc",
+            created_at=start,
+            status="investigating",
         )
         by_day = database.get_incidents_by_day()
         today_str = datetime.now(timezone.utc).date().isoformat()
@@ -208,11 +218,18 @@ class TestGetIncidentsByDay:
 
     def test_old_incident_capped_at_90_days(self):
         """Incidents older than 90 days should be capped at the 90-day boundary."""
-        old = (datetime.now(timezone.utc) - timedelta(days=120)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        recent = (datetime.now(timezone.utc) - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        old = (datetime.now(timezone.utc) - timedelta(days=120)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        recent = (datetime.now(timezone.utc) - timedelta(days=5)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
         database.create_incident(
-            title="Old spanning", service_name="Svc",
-            created_at=old, resolved_at=recent, status="resolved"
+            title="Old spanning",
+            service_name="Svc",
+            created_at=old,
+            resolved_at=recent,
+            status="resolved",
         )
         by_day = database.get_incidents_by_day()
         # Should NOT appear on day -120 (beyond 90-day window)
@@ -231,8 +248,11 @@ class TestGetIncidentsByDay:
     def test_preserves_service_name(self):
         today = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         database.create_incident(
-            title="AKS issue", service_name="Azure Kubernetes Service (AKS)",
-            created_at=today, resolved_at=today, status="resolved"
+            title="AKS issue",
+            service_name="Azure Kubernetes Service (AKS)",
+            created_at=today,
+            resolved_at=today,
+            status="resolved",
         )
         by_day = database.get_incidents_by_day()
         today_str = datetime.now(timezone.utc).date().isoformat()

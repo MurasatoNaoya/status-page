@@ -43,7 +43,7 @@ class TestIndexPage:
         assert resp.status_code == 200
         css = resp.data.decode()
         assert '[data-theme="dark"]' in css
-        assert '--green: #4080cf' in css
+        assert "--green: #4080cf" in css
 
 
 class TestThemeToggleJS:
@@ -78,27 +78,33 @@ class TestAPIRoutes:
         assert isinstance(data, dict)
 
     def test_create_incident_api_unauthenticated(self, app_client):
-        resp = app_client.post("/api/incidents", json={
-            "title": "Test Incident",
-            "impact": "major",
-            "message": "Testing",
-        })
+        resp = app_client.post(
+            "/api/incidents",
+            json={
+                "title": "Test Incident",
+                "impact": "major",
+                "message": "Testing",
+            },
+        )
         assert resp.status_code == 401
 
     def test_update_incident_api_unauthenticated(self, app_client):
-        resp = app_client.patch("/api/incidents/1", json={
-            "status": "resolved", "message": "Fixed"
-        })
+        resp = app_client.patch(
+            "/api/incidents/1", json={"status": "resolved", "message": "Fixed"}
+        )
         assert resp.status_code == 401
 
     def test_create_incident_api(self, app_client):
         with app_client.session_transaction() as sess:
             sess["admin"] = True
-        resp = app_client.post("/api/incidents", json={
-            "title": "Test Incident",
-            "impact": "major",
-            "message": "Testing",
-        })
+        resp = app_client.post(
+            "/api/incidents",
+            json={
+                "title": "Test Incident",
+                "impact": "major",
+                "message": "Testing",
+            },
+        )
         assert resp.status_code == 201
         data = resp.get_json()
         assert "id" in data
@@ -107,14 +113,14 @@ class TestAPIRoutes:
         with app_client.session_transaction() as sess:
             sess["admin"] = True
         # Create first
-        resp = app_client.post("/api/incidents", json={
-            "title": "Update Test", "message": "init"
-        })
+        resp = app_client.post(
+            "/api/incidents", json={"title": "Update Test", "message": "init"}
+        )
         inc_id = resp.get_json()["id"]
         # Update
-        resp = app_client.patch(f"/api/incidents/{inc_id}", json={
-            "status": "resolved", "message": "Fixed"
-        })
+        resp = app_client.patch(
+            f"/api/incidents/{inc_id}", json={"status": "resolved", "message": "Fixed"}
+        )
         assert resp.status_code == 200
 
 
@@ -129,24 +135,28 @@ class TestAdminAuth:
 
     def test_admin_login_wrong_creds(self, app_client):
         token = _get_csrf_token(app_client)
-        resp = app_client.post("/admin/login", data={
-            "username": "admin", "password": "wrong", "_csrf_token": token
-        })
+        resp = app_client.post(
+            "/admin/login",
+            data={"username": "admin", "password": "wrong", "_csrf_token": token},
+        )
         assert resp.status_code == 200  # stays on login page
 
     def test_admin_login_success(self, app_client):
         token = _get_csrf_token(app_client)
-        resp = app_client.post("/admin/login", data={
-            "username": "admin", "password": "testpass", "_csrf_token": token
-        }, follow_redirects=True)
+        resp = app_client.post(
+            "/admin/login",
+            data={"username": "admin", "password": "testpass", "_csrf_token": token},
+            follow_redirects=True,
+        )
         assert resp.status_code == 200
 
     def test_admin_logout(self, app_client):
         # Login first
         token = _get_csrf_token(app_client)
-        app_client.post("/admin/login", data={
-            "username": "admin", "password": "testpass", "_csrf_token": token
-        })
+        app_client.post(
+            "/admin/login",
+            data={"username": "admin", "password": "testpass", "_csrf_token": token},
+        )
         resp = app_client.get("/admin/logout")
         assert resp.status_code == 302
         # Should be redirected away from admin after logout
@@ -156,17 +166,20 @@ class TestAdminAuth:
     def test_brute_force_rate_limit(self, app_client):
         """After 5 failed login attempts, return 429."""
         import app as app_module
+
         # Clear any prior state
         app_module._login_failures.clear()
         for _ in range(5):
             token = _get_csrf_token(app_client)
-            app_client.post("/admin/login", data={
-                "username": "admin", "password": "wrong", "_csrf_token": token
-            })
+            app_client.post(
+                "/admin/login",
+                data={"username": "admin", "password": "wrong", "_csrf_token": token},
+            )
         token = _get_csrf_token(app_client)
-        resp = app_client.post("/admin/login", data={
-            "username": "admin", "password": "wrong", "_csrf_token": token
-        })
+        resp = app_client.post(
+            "/admin/login",
+            data={"username": "admin", "password": "wrong", "_csrf_token": token},
+        )
         assert resp.status_code == 429
         # Clean up
         app_module._login_failures.clear()
@@ -175,17 +188,20 @@ class TestAdminAuth:
 class TestGMTFilter:
     def test_format_gmt_filter(self, app_client):
         from app import format_gmt
+
         result = format_gmt("2026-02-14T18:22:00Z")
         assert "Feb 14, 2026" in result
         assert "GMT" in result
 
     def test_format_gmt_empty(self, app_client):
         from app import format_gmt
+
         assert format_gmt("") == ""
         assert format_gmt(None) == ""
 
     def test_format_gmt_invalid(self, app_client):
         from app import format_gmt
+
         assert format_gmt("not-a-date") == "not-a-date"
 
 
@@ -194,9 +210,12 @@ class TestIncidentAutoDetection:
 
     def test_auto_create_incident_after_threshold(self):
         from app import run_service_check
+
         svc = {"name": "TestAutoSvc", "type": "http", "url": "https://fail.example.com"}
 
-        with __import__("unittest.mock", fromlist=["patch"]).patch("app.run_check") as mock:
+        with __import__("unittest.mock", fromlist=["patch"]).patch(
+            "app.run_check"
+        ) as mock:
             mock.return_value = ("down", None, "Connection refused")
             for _ in range(3):
                 run_service_check(svc)
@@ -207,15 +226,20 @@ class TestIncidentAutoDetection:
 
     def test_auto_resolve_on_recovery(self):
         from app import run_service_check
+
         svc = {"name": "RecoverSvc", "type": "http", "url": "https://example.com"}
 
         # Create an active incident
         database.create_incident(
-            title="RecoverSvc Outage", impact="major",
-            message="down", service_name="RecoverSvc"
+            title="RecoverSvc Outage",
+            impact="major",
+            message="down",
+            service_name="RecoverSvc",
         )
 
-        with __import__("unittest.mock", fromlist=["patch"]).patch("app.run_check") as mock:
+        with __import__("unittest.mock", fromlist=["patch"]).patch(
+            "app.run_check"
+        ) as mock:
             mock.return_value = ("up", 50.0, None)
             run_service_check(svc)
 
@@ -228,18 +252,22 @@ class TestIncidentSeverity:
 
     def test_no_incidents_returns_none(self):
         from app import _incident_severity
+
         assert _incident_severity([]) is None
 
     def test_critical_incident(self):
         from app import _incident_severity
+
         assert _incident_severity([{"impact": "critical"}]) == "major"
 
     def test_major_incident(self):
         from app import _incident_severity
+
         assert _incident_severity([{"impact": "major"}]) == "partial"
 
     def test_minor_incident(self):
         from app import _incident_severity
+
         assert _incident_severity([{"impact": "minor"}]) == "degraded"
 
 
@@ -248,6 +276,7 @@ class TestFilterIncidentsForService:
 
     def test_matches_exact_service_name(self):
         from app import _filter_incidents_for_service
+
         incidents = [
             {"id": 1, "service_name": "AKS", "title": "AKS down"},
             {"id": 2, "service_name": "Entra", "title": "Entra down"},
@@ -258,6 +287,7 @@ class TestFilterIncidentsForService:
 
     def test_includes_incidents_with_no_service(self):
         from app import _filter_incidents_for_service
+
         incidents = [
             {"id": 1, "service_name": None, "title": "Global outage"},
             {"id": 2, "service_name": "AKS", "title": "AKS down"},
@@ -268,6 +298,7 @@ class TestFilterIncidentsForService:
 
     def test_deduplicates_by_id(self):
         from app import _filter_incidents_for_service
+
         incidents = [
             {"id": 1, "service_name": "AKS", "title": "AKS down"},
             {"id": 1, "service_name": "AKS", "title": "AKS down"},
@@ -277,15 +308,16 @@ class TestFilterIncidentsForService:
 
     def test_limits_to_3(self):
         from app import _filter_incidents_for_service
+
         incidents = [
-            {"id": i, "service_name": "Svc", "title": f"Inc {i}"}
-            for i in range(10)
+            {"id": i, "service_name": "Svc", "title": f"Inc {i}"} for i in range(10)
         ]
         result = _filter_incidents_for_service(incidents, "Svc")
         assert len(result) == 3
 
     def test_does_not_match_different_service(self):
         from app import _filter_incidents_for_service
+
         incidents = [
             {"id": 1, "service_name": "AKS", "title": "AKS down"},
         ]
@@ -298,20 +330,24 @@ class TestFormatDayFilter:
 
     def test_formats_iso_date(self, app_client):
         from app import format_day
+
         assert format_day("2026-02-14") == "14 Feb 2026"
 
     def test_formats_iso_datetime(self, app_client):
         from app import format_day
+
         result = format_day("2026-01-03")
         assert result == "3 Jan 2026"
 
     def test_empty_returns_empty(self, app_client):
         from app import format_day
+
         assert format_day("") == ""
         assert format_day(None) == ""
 
     def test_invalid_returns_input(self, app_client):
         from app import format_day
+
         assert format_day("not-a-date") == "not-a-date"
 
 
@@ -320,21 +356,22 @@ class TestBuildServiceData:
 
     def _seed_checks(self, name, days, status="up", interval=60):
         """Insert check records spanning multiple days."""
-        now = datetime.now(timezone.utc)
         for d in range(days):
             for h in range(24):
-                ts = (now - timedelta(days=d, hours=h)).strftime("%Y-%m-%dT%H:%M:%SZ")
-                database.record_check(name, status, 10.0 if status == "up" else None,
-                                      None if status == "up" else "error")
+                database.record_check(
+                    name,
+                    status,
+                    10.0 if status == "up" else None,
+                    None if status == "up" else "error",
+                )
 
     def test_bars_gray_with_insufficient_history(self):
         """Services with < 3 days of data should have all uptime_pct = None."""
         from app import build_service_data
+
         database.record_check("NewSvc", "up", 10.0, None)
         latest = database.get_latest_status(["NewSvc"])
-        data, _ = build_service_data(
-            [{"name": "NewSvc", "interval": 60}], latest
-        )
+        data, _ = build_service_data([{"name": "NewSvc", "interval": 60}], latest)
         svc = data[0]
         # All bars should be None (gray) because < 3 days of history
         pcts = [d["uptime_pct"] for d in svc["days"]]
@@ -343,28 +380,28 @@ class TestBuildServiceData:
     def test_no_data_status_when_no_checks(self):
         """Services with no check data at all should show 'no_data' status."""
         from app import build_service_data
+
         latest = database.get_latest_status(["NeverChecked"])
-        data, _ = build_service_data(
-            [{"name": "NeverChecked", "interval": 60}], latest
-        )
+        data, _ = build_service_data([{"name": "NeverChecked", "interval": 60}], latest)
         assert data[0]["status"] == "no_data"
 
     def test_no_data_status_with_insufficient_history(self):
         """Services with data but < 3 days should show 'no_data' status."""
         from app import build_service_data
+
         database.record_check("FreshSvc", "up", 10.0, None)
         latest = database.get_latest_status(["FreshSvc"])
-        data, _ = build_service_data(
-            [{"name": "FreshSvc", "interval": 60}], latest
-        )
+        data, _ = build_service_data([{"name": "FreshSvc", "interval": 60}], latest)
         assert data[0]["status"] == "no_data"
 
     def test_bars_colored_with_enough_history(self):
         """Services with >= 3 days and incident coverage should show colored bars."""
         from app import build_service_data
+
         now = datetime.now(timezone.utc)
         # Insert checks with timestamps spread across 4 days
         from database import get_db
+
         for d in range(4):
             ts = (now - timedelta(days=d)).strftime("%Y-%m-%dT%H:%M:%SZ")
             with get_db() as db:
@@ -387,6 +424,7 @@ class TestBuildServiceData:
     def test_incidents_included_even_without_history(self):
         """Incidents must show even when service has < 3 days of data."""
         from app import build_service_data
+
         database.record_check("NewSvc", "up", 10.0, None)
         today = datetime.now(timezone.utc).date().isoformat()
         incidents_by_day = {
@@ -403,6 +441,7 @@ class TestBuildServiceData:
     def test_badge_operational_when_all_up(self):
         from app import build_service_data
         from database import get_db
+
         now = datetime.now(timezone.utc)
         # Seed 4 days of check data to pass has_history threshold
         for d in range(4):
@@ -414,21 +453,18 @@ class TestBuildServiceData:
                         ("GoodSvc", "up", 10.0, ts),
                     )
         latest = database.get_latest_status(["GoodSvc"])
-        data, all_ok = build_service_data(
-            [{"name": "GoodSvc", "interval": 60}], latest
-        )
+        data, all_ok = build_service_data([{"name": "GoodSvc", "interval": 60}], latest)
         assert data[0]["status"] == "operational"
         assert all_ok is True
 
     def test_badge_degraded_when_latest_down_no_incident(self):
         from app import build_service_data
+
         for _ in range(25):
             database.record_check("DownSvc", "up", 10.0, None)
         database.record_check("DownSvc", "down", None, "Connection refused")
         latest = database.get_latest_status(["DownSvc"])
-        data, all_ok = build_service_data(
-            [{"name": "DownSvc", "interval": 60}], latest
-        )
+        data, all_ok = build_service_data([{"name": "DownSvc", "interval": 60}], latest)
         # Latest check is down but no active incident yet — badge is degraded
         assert data[0]["status"] == "degraded"
         assert all_ok is False
@@ -436,8 +472,8 @@ class TestBuildServiceData:
     def test_badge_degraded_when_latest_down_despite_high_uptime(self):
         """Even with >95% uptime today, badge reflects current status (latest check)."""
         from app import build_service_data
+
         # 4 days of data to pass has_history check
-        now = datetime.now(timezone.utc)
         for d in range(4):
             for _ in range(24):
                 database.record_check("DegSvc", "up", 10.0, None)
@@ -445,26 +481,23 @@ class TestBuildServiceData:
         database.record_check("DegSvc", "down", None, "timeout")
         latest = database.get_latest_status(["DegSvc"])
         # Latest check is "down" with no active incident — badge is degraded
-        data, _ = build_service_data(
-            [{"name": "DegSvc", "interval": 60}], latest
-        )
+        data, _ = build_service_data([{"name": "DegSvc", "interval": 60}], latest)
         assert data[0]["status"] == "degraded"
 
     def test_uptime_pct_suppressed_with_insufficient_history(self):
         from app import build_service_data
+
         # Only 1 day of data
         for _ in range(25):
             database.record_check("ShortSvc", "up", 10.0, None)
         latest = database.get_latest_status(["ShortSvc"])
-        data, _ = build_service_data(
-            [{"name": "ShortSvc", "interval": 60}], latest
-        )
+        data, _ = build_service_data([{"name": "ShortSvc", "interval": 60}], latest)
         assert data[0]["uptime_pct"] is None
 
     def test_downtime_calculation(self):
         """Downtime should be down_count * interval_sec."""
         from app import build_service_data
-        now = datetime.now(timezone.utc)
+
         for d in range(4):
             for _ in range(20):
                 database.record_check("DtSvc", "up", 10.0, None)
@@ -472,19 +505,17 @@ class TestBuildServiceData:
         for _ in range(5):
             database.record_check("DtSvc", "down", None, "err")
         latest = database.get_latest_status(["DtSvc"])
-        data, _ = build_service_data(
-            [{"name": "DtSvc", "interval": 300}], latest
-        )
+        data, _ = build_service_data([{"name": "DtSvc", "interval": 300}], latest)
         today_bar = data[0]["days"][-1]
         # 5 failures * 300s = 1500s = 0 hrs, 25 mins
         assert today_bar["downtime_mins"] == 25
         assert today_bar["downtime_hours"] == 0
 
-
     def test_severity_from_incident_impact_critical(self):
         """Critical incidents should produce 'major' severity (red bar)."""
         from app import build_service_data
         from database import get_db
+
         now = datetime.now(timezone.utc)
         for d in range(4):
             ts = (now - timedelta(days=d)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -496,7 +527,14 @@ class TestBuildServiceData:
                     )
         today = now.date().isoformat()
         incidents_by_day = {
-            today: [{"id": 42, "service_name": "CritSvc", "title": "Critical outage", "impact": "critical"}]
+            today: [
+                {
+                    "id": 42,
+                    "service_name": "CritSvc",
+                    "title": "Critical outage",
+                    "impact": "critical",
+                }
+            ]
         }
         latest = database.get_latest_status(["CritSvc"])
         data, _ = build_service_data(
@@ -510,6 +548,7 @@ class TestBuildServiceData:
         """Major incidents should produce 'partial' severity (orange bar)."""
         from app import build_service_data
         from database import get_db
+
         now = datetime.now(timezone.utc)
         for d in range(4):
             ts = (now - timedelta(days=d)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -521,7 +560,14 @@ class TestBuildServiceData:
                     )
         today = now.date().isoformat()
         incidents_by_day = {
-            today: [{"id": 43, "service_name": "MajSvc", "title": "Major outage", "impact": "major"}]
+            today: [
+                {
+                    "id": 43,
+                    "service_name": "MajSvc",
+                    "title": "Major outage",
+                    "impact": "major",
+                }
+            ]
         }
         latest = database.get_latest_status(["MajSvc"])
         data, _ = build_service_data(
@@ -534,6 +580,7 @@ class TestBuildServiceData:
         """Minor incidents should produce 'degraded' severity (yellow bar)."""
         from app import build_service_data
         from database import get_db
+
         now = datetime.now(timezone.utc)
         for d in range(4):
             ts = (now - timedelta(days=d)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -545,7 +592,14 @@ class TestBuildServiceData:
                     )
         today = now.date().isoformat()
         incidents_by_day = {
-            today: [{"id": 44, "service_name": "MinSvc", "title": "Minor issue", "impact": "minor"}]
+            today: [
+                {
+                    "id": 44,
+                    "service_name": "MinSvc",
+                    "title": "Minor issue",
+                    "impact": "minor",
+                }
+            ]
         }
         latest = database.get_latest_status(["MinSvc"])
         data, _ = build_service_data(
@@ -558,6 +612,7 @@ class TestBuildServiceData:
         """Days with 100% uptime and no incidents should have severity=None."""
         from app import build_service_data
         from database import get_db
+
         now = datetime.now(timezone.utc)
         for d in range(4):
             ts = (now - timedelta(days=d)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -568,9 +623,7 @@ class TestBuildServiceData:
                         ("CleanSvc", "up", 10.0, ts),
                     )
         latest = database.get_latest_status(["CleanSvc"])
-        data, _ = build_service_data(
-            [{"name": "CleanSvc", "interval": 60}], latest
-        )
+        data, _ = build_service_data([{"name": "CleanSvc", "interval": 60}], latest)
         today_bar = data[0]["days"][-1]
         assert today_bar["severity"] is None
         assert today_bar["down_count"] == 0
@@ -578,6 +631,7 @@ class TestBuildServiceData:
     def test_severity_preserved_for_incidents_without_enough_history(self):
         """Incidents should set severity even when service has < 3 days of history."""
         from app import build_service_data
+
         database.record_check("NoHistSvc", "up", 10.0, None)
         today = datetime.now(timezone.utc).date().isoformat()
         incidents_by_day = {
@@ -605,6 +659,7 @@ class TestBarCoverage:
     def _seed_days(self, name, days=5):
         """Insert check records spanning multiple days with timestamps."""
         from database import get_db
+
         now = datetime.now(timezone.utc)
         for d in range(days):
             ts = (now - timedelta(days=d)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -621,6 +676,7 @@ class TestBarCoverage:
         """Service with a feed but zero incidents should show GREEN bars, not grey.
         Bug: Docker Hub was all grey because coverage_start had no entry."""
         from app import build_service_data
+
         self._seed_days("FeedSvc", 5)
         latest = database.get_latest_status(["FeedSvc"])
         # Simulate feed coverage from long ago (feed active, just no incidents)
@@ -629,28 +685,32 @@ class TestBarCoverage:
             [{"name": "FeedSvc", "interval": 60}], latest, coverage_start=coverage
         )
         today_bar = data[0]["days"][-1]
-        assert today_bar["uptime_pct"] is not None, "Should be green (has pct), not grey"
+        assert today_bar["uptime_pct"] is not None, (
+            "Should be green (has pct), not grey"
+        )
 
     def test_no_feed_no_incidents_shows_grey(self):
         """Service with NO feed and no incidents should show GREY bars.
         This is the correct 'no data' state."""
         from app import build_service_data
+
         self._seed_days("NoFeedSvc", 5)
         latest = database.get_latest_status(["NoFeedSvc"])
         # No coverage_start entry = no feed coverage
-        data, _ = build_service_data(
-            [{"name": "NoFeedSvc", "interval": 60}], latest
-        )
+        data, _ = build_service_data([{"name": "NoFeedSvc", "interval": 60}], latest)
         today_bar = data[0]["days"][-1]
         assert today_bar["uptime_pct"] is None, "Should be grey (no coverage)"
 
     def test_coverage_start_determines_green_vs_grey_boundary(self):
         """Days before coverage_start should be grey; days on/after should be green."""
         from app import build_service_data
+
         self._seed_days("BoundarySvc", 30)
         latest = database.get_latest_status(["BoundarySvc"])
         # Coverage starts 10 days ago
-        ten_days_ago = (datetime.now(timezone.utc) - timedelta(days=10)).date().isoformat()
+        ten_days_ago = (
+            (datetime.now(timezone.utc) - timedelta(days=10)).date().isoformat()
+        )
         coverage = {"BoundarySvc": ten_days_ago}
         data, _ = build_service_data(
             [{"name": "BoundarySvc", "interval": 60}], latest, coverage_start=coverage
@@ -658,7 +718,9 @@ class TestBarCoverage:
         days = data[0]["days"]
         # Last 11 bars (today + 10 days ago) should have uptime_pct
         for d in days[-11:]:
-            assert d["uptime_pct"] is not None, f"Day {d['date']} should be green (after coverage start)"
+            assert d["uptime_pct"] is not None, (
+                f"Day {d['date']} should be green (after coverage start)"
+            )
         # Bar 12 days ago should be grey
         assert days[-12]["uptime_pct"] is None, "Day before coverage should be grey"
 
@@ -668,6 +730,7 @@ class TestBarCoverage:
         """Incidents with service_name=None should match ALL services.
         Bug: Docker Hub incidents without mapped components leaked to Azure bars."""
         from app import _filter_incidents_for_service
+
         incidents = [
             {"id": 1, "service_name": "Docker Hub", "title": "Docker outage"},
             {"id": 2, "service_name": None, "title": "Unknown outage"},
@@ -684,15 +747,19 @@ class TestBarCoverage:
     def test_docker_incident_does_not_appear_on_azure_bar(self):
         """Docker Hub incidents must NOT appear on Azure service bars."""
         from app import _filter_incidents_for_service
+
         incidents = [
             {"id": 1, "service_name": "Docker Hub", "title": "Docker registry outage"},
         ]
-        result = _filter_incidents_for_service(incidents, "Azure Kubernetes Service (AKS)")
+        result = _filter_incidents_for_service(
+            incidents, "Azure Kubernetes Service (AKS)"
+        )
         assert len(result) == 0
 
     def test_github_incident_does_not_appear_on_docker_bar(self):
         """GitHub incidents must NOT appear on Docker Hub bar."""
         from app import _filter_incidents_for_service
+
         incidents = [
             {"id": 1, "service_name": "GitHub Actions", "title": "Actions degraded"},
         ]
@@ -704,10 +771,18 @@ class TestBarCoverage:
     def test_bar_colored_from_feed_incident_not_checks(self):
         """Bar severity should come from feed incidents, NOT from check failures."""
         from app import build_service_data
+
         self._seed_days("IncSvc", 5)
         today = datetime.now(timezone.utc).date().isoformat()
         incidents_by_day = {
-            today: [{"id": 10, "service_name": "IncSvc", "title": "Feed outage", "impact": "major"}]
+            today: [
+                {
+                    "id": 10,
+                    "service_name": "IncSvc",
+                    "title": "Feed outage",
+                    "impact": "major",
+                }
+            ]
         }
         latest = database.get_latest_status(["IncSvc"])
         coverage = {"IncSvc": "2020-01-01"}
@@ -721,6 +796,7 @@ class TestBarCoverage:
     def test_bar_green_when_checks_pass_and_no_incidents(self):
         """Bar should be green when checks pass and no incidents exist."""
         from app import build_service_data
+
         self._seed_days("GreenSvc", 5)
         latest = database.get_latest_status(["GreenSvc"])
         coverage = {"GreenSvc": "2020-01-01"}
@@ -743,8 +819,11 @@ class TestBarCoverage:
 
     def test_statusio_feed_components_provide_coverage(self):
         """Services in a Status.io feed's components map should have coverage."""
-        feed = {"name": "Docker", "type": "statusio",
-                "components": {"Docker Hub Registry": "Docker Hub"}}
+        feed = {
+            "name": "Docker",
+            "type": "statusio",
+            "components": {"Docker Hub Registry": "Docker Hub"},
+        }
         feed_services = set()
         feed_services.update(feed.get("components", {}).values())
         feed_services.update(feed.get("covered_services", []))
@@ -753,8 +832,14 @@ class TestBarCoverage:
     def test_azure_rss_covered_services_provide_coverage(self):
         """Azure RSS feed uses covered_services instead of components map.
         Bug: Azure bars were all grey because RSS has no components map."""
-        feed = {"name": "Azure", "type": "azure_rss",
-                "covered_services": ["Azure Kubernetes Service (AKS)", "Azure AD / Entra ID"]}
+        feed = {
+            "name": "Azure",
+            "type": "azure_rss",
+            "covered_services": [
+                "Azure Kubernetes Service (AKS)",
+                "Azure AD / Entra ID",
+            ],
+        }
         feed_services = set()
         feed_services.update(feed.get("components", {}).values())
         feed_services.update(feed.get("covered_services", []))
@@ -798,9 +883,12 @@ class TestTooltipLabels:
         with open("templates/index.html") as f:
             template = f.read()
         import re
+
         # Find all 'outage reported' that aren't prefixed by Major or Partial
-        matches = re.findall(r'(?<!Major )(?<!Partial )Outage reported', template)
-        assert len(matches) == 0, f"Found bare 'Outage reported' without qualifier: {matches}"
+        matches = re.findall(r"(?<!Major )(?<!Partial )Outage reported", template)
+        assert len(matches) == 0, (
+            f"Found bare 'Outage reported' without qualifier: {matches}"
+        )
 
 
 class TestPollStatusFeedServiceFiltering:
@@ -811,34 +899,48 @@ class TestPollStatusFeedServiceFiltering:
         Bug: Docker incidents for Docker Desktop/Billing created with service_name=NULL
         and leaked to all service bars."""
         from app import poll_status_feed
-        feed_results = [{
-            "external_id": "unmapped-123",
-            "title": "Docker Desktop issue",
-            "status": "resolved",
-            "services": None,  # No services matched the component map
-            "updates": [{"status": "investigating", "message": "Looking"}],
-            "source": "Docker",
-        }]
-        feed_config = {"name": "Docker", "components": {"Docker Hub Registry": "Docker Hub"}}
+
+        feed_results = [
+            {
+                "external_id": "unmapped-123",
+                "title": "Docker Desktop issue",
+                "status": "resolved",
+                "services": None,  # No services matched the component map
+                "updates": [{"status": "investigating", "message": "Looking"}],
+                "source": "Docker",
+            }
+        ]
+        feed_config = {
+            "name": "Docker",
+            "components": {"Docker Hub Registry": "Docker Hub"},
+        }
         with patch("app.poll_feed", return_value=feed_results):
             poll_status_feed(feed_config)
 
         # Should NOT create an incident (service not mapped)
         inc = database.get_incident_by_external_id("unmapped-123")
-        assert inc is None, "Should skip incidents with no mapped services when feed has components"
+        assert inc is None, (
+            "Should skip incidents with no mapped services when feed has components"
+        )
 
     def test_feed_with_components_creates_mapped_incidents(self):
         """When a feed has a component map, incidents WITH matching services should be created."""
         from app import poll_status_feed
-        feed_results = [{
-            "external_id": "mapped-456",
-            "title": "Docker Hub outage",
-            "status": "resolved",
-            "services": ["Docker Hub"],
-            "updates": [{"status": "investigating", "message": "Looking"}],
-            "source": "Docker",
-        }]
-        feed_config = {"name": "Docker", "components": {"Docker Hub Registry": "Docker Hub"}}
+
+        feed_results = [
+            {
+                "external_id": "mapped-456",
+                "title": "Docker Hub outage",
+                "status": "resolved",
+                "services": ["Docker Hub"],
+                "updates": [{"status": "investigating", "message": "Looking"}],
+                "source": "Docker",
+            }
+        ]
+        feed_config = {
+            "name": "Docker",
+            "components": {"Docker Hub Registry": "Docker Hub"},
+        }
         with patch("app.poll_feed", return_value=feed_results):
             poll_status_feed(feed_config)
 
@@ -850,14 +952,17 @@ class TestPollStatusFeedServiceFiltering:
         """Feeds without component maps (like Azure RSS keyword matching)
         should still create incidents with service_name=NULL when no services matched."""
         from app import poll_status_feed
-        feed_results = [{
-            "external_id": "azure-rss-999",
-            "title": "Some Azure issue",
-            "status": "resolved",
-            "services": None,
-            "updates": [{"status": "investigating", "message": "Looking"}],
-            "source": "Azure",
-        }]
+
+        feed_results = [
+            {
+                "external_id": "azure-rss-999",
+                "title": "Some Azure issue",
+                "status": "resolved",
+                "services": None,
+                "updates": [{"status": "investigating", "message": "Looking"}],
+                "source": "Azure",
+            }
+        ]
         # No components key = no component map
         feed_config = {"name": "Azure"}
         with patch("app.poll_feed", return_value=feed_results):
@@ -871,7 +976,7 @@ class TestPollStatusFeedServiceFiltering:
 class TestParseAzureHistory:
     """Test Azure history page scraping."""
 
-    SAMPLE_HTML = '''
+    SAMPLE_HTML = """
     <div class="row incident-history-header">
       <div class="col-sm-1 incident-history-day">Feb 2</div>
       <div class="col-sm-11 incident-history-item">
@@ -897,10 +1002,11 @@ class TestParseAzureHistory:
         </div>
       </div>
     </div>
-    '''
+    """
 
     def test_parses_incident_title_and_id(self):
         from status_feeds import _parse_azure_history
+
         incidents = _parse_azure_history(self.SAMPLE_HTML, exclude_regions=[])
         assert len(incidents) == 2
         assert incidents[0]["title"] == "PIR – Virtual Machines and AKS outage"
@@ -908,6 +1014,7 @@ class TestParseAzureHistory:
 
     def test_matches_azure_services(self):
         from status_feeds import _parse_azure_history
+
         incidents = _parse_azure_history(self.SAMPLE_HTML, exclude_regions=[])
         vm_inc = incidents[0]
         # Should match AKS and Virtual Machines
@@ -916,8 +1023,8 @@ class TestParseAzureHistory:
 
     def test_region_filtering_excludes_west_us(self):
         from status_feeds import _parse_azure_history
-        incidents = _parse_azure_history(self.SAMPLE_HTML,
-                                         exclude_regions=["West US"])
+
+        incidents = _parse_azure_history(self.SAMPLE_HTML, exclude_regions=["West US"])
         # First incident mentions "all regions" so it passes
         # Second incident is West US only so it's excluded
         assert len(incidents) == 1
@@ -925,8 +1032,10 @@ class TestParseAzureHistory:
 
     def test_global_incident_not_excluded(self):
         from status_feeds import _parse_azure_history
-        incidents = _parse_azure_history(self.SAMPLE_HTML,
-                                         exclude_regions=["West US", "East US"])
+
+        incidents = _parse_azure_history(
+            self.SAMPLE_HTML, exclude_regions=["West US", "East US"]
+        )
         # "all regions" incident should still pass even though regions are excluded
         assert len(incidents) == 1
         # Summary is in the last update (used as initial message by poll_status_feed)
@@ -934,6 +1043,7 @@ class TestParseAzureHistory:
 
     def test_extracts_start_and_end_times(self):
         from status_feeds import _parse_azure_history
+
         incidents = _parse_azure_history(self.SAMPLE_HTML, exclude_regions=[])
         inc = incidents[0]
         # Start: 19:46 UTC on 02 February 2026
@@ -942,7 +1052,7 @@ class TestParseAzureHistory:
         assert inc["resolved_at"] == "2026-02-03T06:05:00Z"
 
     def test_strips_video_preamble(self):
-        html = '''
+        html = """
         <div class="row incident-history-header">
           <div class="col-sm-11 incident-history-item">
             <div class="col-md-8 incident-history-title">PIR – Entra PIM failures</div>
@@ -956,8 +1066,9 @@ class TestParseAzureHistory:
             </div>
           </div>
         </div>
-        '''
+        """
         from status_feeds import _parse_azure_history
+
         incidents = _parse_azure_history(html, exclude_regions=[])
         assert len(incidents) == 1
         summary = incidents[0]["updates"][-1]["message"]
@@ -966,6 +1077,7 @@ class TestParseAzureHistory:
 
     def test_all_history_incidents_are_resolved(self):
         from status_feeds import _parse_azure_history
+
         incidents = _parse_azure_history(self.SAMPLE_HTML, exclude_regions=[])
         for inc in incidents:
             assert inc["status"] == "resolved"
@@ -987,22 +1099,33 @@ class TestPollStatusioAPI:
 
     def test_returns_incidents_with_correct_format(self):
         from status_feeds import poll_statusio_api
+
         feed_config = {
             "name": "Docker",
             "url": "https://api.status.io/1.0/status/533c6539221ae15e3f000031",
             "components": {"Docker Hub Registry": "Docker Hub"},
             "interval": 300,
         }
-        fake_resp = self._make_statusio_response(incidents=[{
-            "_id": "abc123",
-            "name": "Registry outage",
-            "datetime_open": "2026-02-10T10:00:00.000Z",
-            "datetime_close": "",
-            "messages": [
-                {"details": "Investigating the issue.", "status": 500, "datetime": "2026-02-10T10:00:00.000Z"},
-            ],
-            "components_affected": [{"name": "Docker Hub Registry", "_id": "comp1"}],
-        }])
+        fake_resp = self._make_statusio_response(
+            incidents=[
+                {
+                    "_id": "abc123",
+                    "name": "Registry outage",
+                    "datetime_open": "2026-02-10T10:00:00.000Z",
+                    "datetime_close": "",
+                    "messages": [
+                        {
+                            "details": "Investigating the issue.",
+                            "status": 500,
+                            "datetime": "2026-02-10T10:00:00.000Z",
+                        },
+                    ],
+                    "components_affected": [
+                        {"name": "Docker Hub Registry", "_id": "comp1"}
+                    ],
+                }
+            ]
+        )
         with patch("status_feeds.SESSION.get") as mock_get:
             mock_get.return_value.status_code = 200
             mock_get.return_value.json.return_value = fake_resp
@@ -1021,22 +1144,37 @@ class TestPollStatusioAPI:
 
     def test_resolved_incident_has_resolved_status(self):
         from status_feeds import poll_statusio_api
+
         feed_config = {
             "name": "Docker",
             "url": "https://api.status.io/1.0/status/fake",
             "components": {"Docker Hub Registry": "Docker Hub"},
         }
-        fake_resp = self._make_statusio_response(incidents=[{
-            "_id": "def456",
-            "name": "Brief outage",
-            "datetime_open": "2026-02-10T10:00:00.000Z",
-            "datetime_close": "2026-02-10T11:00:00.000Z",
-            "messages": [
-                {"details": "Fixed.", "status": 100, "datetime": "2026-02-10T11:00:00.000Z"},
-                {"details": "Investigating.", "status": 500, "datetime": "2026-02-10T10:00:00.000Z"},
-            ],
-            "components_affected": [{"name": "Docker Hub Registry", "_id": "comp1"}],
-        }])
+        fake_resp = self._make_statusio_response(
+            incidents=[
+                {
+                    "_id": "def456",
+                    "name": "Brief outage",
+                    "datetime_open": "2026-02-10T10:00:00.000Z",
+                    "datetime_close": "2026-02-10T11:00:00.000Z",
+                    "messages": [
+                        {
+                            "details": "Fixed.",
+                            "status": 100,
+                            "datetime": "2026-02-10T11:00:00.000Z",
+                        },
+                        {
+                            "details": "Investigating.",
+                            "status": 500,
+                            "datetime": "2026-02-10T10:00:00.000Z",
+                        },
+                    ],
+                    "components_affected": [
+                        {"name": "Docker Hub Registry", "_id": "comp1"}
+                    ],
+                }
+            ]
+        )
         with patch("status_feeds.SESSION.get") as mock_get:
             mock_get.return_value.status_code = 200
             mock_get.return_value.json.return_value = fake_resp
@@ -1050,6 +1188,7 @@ class TestPollStatusioAPI:
 
     def test_maps_status_codes_to_impact(self):
         from status_feeds import _statusio_code_to_impact
+
         assert _statusio_code_to_impact(100) == "none"
         assert _statusio_code_to_impact(300) == "minor"
         assert _statusio_code_to_impact(400) == "major"
@@ -1058,19 +1197,24 @@ class TestPollStatusioAPI:
 
     def test_returns_component_status(self):
         from status_feeds import poll_statusio_api
+
         feed_config = {
             "name": "Docker",
             "url": "https://api.status.io/1.0/status/fake",
             "components": {"Docker Hub Registry": "Docker Hub"},
         }
-        fake_resp = self._make_statusio_response(components=[{
-            "id": "comp1",
-            "name": "Docker Hub Registry",
-            "status": "Degraded Performance",
-            "status_code": 300,
-            "containers": [],
-            "updated": "2026-02-10T10:00:00.000Z",
-        }])
+        fake_resp = self._make_statusio_response(
+            components=[
+                {
+                    "id": "comp1",
+                    "name": "Docker Hub Registry",
+                    "status": "Degraded Performance",
+                    "status_code": 300,
+                    "containers": [],
+                    "updated": "2026-02-10T10:00:00.000Z",
+                }
+            ]
+        )
         with patch("status_feeds.SESSION.get") as mock_get:
             mock_get.return_value.status_code = 200
             mock_get.return_value.json.return_value = fake_resp
@@ -1084,19 +1228,30 @@ class TestPollStatusioAPI:
 
     def test_unmapped_components_ignored(self):
         from status_feeds import poll_statusio_api
+
         feed_config = {
             "name": "Docker",
             "url": "https://api.status.io/1.0/status/fake",
             "components": {"Docker Hub Registry": "Docker Hub"},
         }
-        fake_resp = self._make_statusio_response(incidents=[{
-            "_id": "xyz789",
-            "name": "Desktop issue",
-            "datetime_open": "2026-02-10T10:00:00.000Z",
-            "datetime_close": "",
-            "messages": [{"details": "Issue.", "status": 400, "datetime": "2026-02-10T10:00:00.000Z"}],
-            "components_affected": [{"name": "Docker Desktop", "_id": "comp2"}],
-        }])
+        fake_resp = self._make_statusio_response(
+            incidents=[
+                {
+                    "_id": "xyz789",
+                    "name": "Desktop issue",
+                    "datetime_open": "2026-02-10T10:00:00.000Z",
+                    "datetime_close": "",
+                    "messages": [
+                        {
+                            "details": "Issue.",
+                            "status": 400,
+                            "datetime": "2026-02-10T10:00:00.000Z",
+                        }
+                    ],
+                    "components_affected": [{"name": "Docker Desktop", "_id": "comp2"}],
+                }
+            ]
+        )
         with patch("status_feeds.SESSION.get") as mock_get:
             mock_get.return_value.status_code = 200
             mock_get.return_value.json.return_value = fake_resp
@@ -1110,6 +1265,7 @@ class TestPollStatusioAPI:
 
     def test_api_failure_returns_empty(self):
         from status_feeds import poll_statusio_api
+
         feed_config = {
             "name": "Docker",
             "url": "https://api.status.io/1.0/status/fake",
@@ -1124,7 +1280,7 @@ class TestPollStatusioAPI:
 class TestScrapeStatusioHistory:
     """Test scraping Status.io history page for historical incidents."""
 
-    SAMPLE_HTML = '''
+    SAMPLE_HTML = """
     <div class="row incident" id="statusio_incident_abc123def">
       <div class="col-md-12"><div class="panel panel-default make_round">
         <div class="panel-heading make_round" style="background:#ffb463;">
@@ -1156,38 +1312,54 @@ class TestScrapeStatusioHistory:
         </div>
       </div></div>
     </div>
-    '''
+    """
 
     def test_parses_incident_title_and_id(self):
         from status_feeds import _parse_statusio_history
-        incidents = _parse_statusio_history(self.SAMPLE_HTML, {
-            "Docker Hub Registry": "Docker Hub",
-            "Docker Authentication": "Docker Hub",
-        })
+
+        incidents = _parse_statusio_history(
+            self.SAMPLE_HTML,
+            {
+                "Docker Hub Registry": "Docker Hub",
+                "Docker Authentication": "Docker Hub",
+            },
+        )
         assert len(incidents) == 1
         assert incidents[0]["title"] == "Registry outage title"
         assert incidents[0]["external_id"] == "abc123def"
 
     def test_maps_components_to_services(self):
         from status_feeds import _parse_statusio_history
-        incidents = _parse_statusio_history(self.SAMPLE_HTML, {
-            "Docker Hub Registry": "Docker Hub",
-            "Docker Authentication": "Docker Hub",
-        })
+
+        incidents = _parse_statusio_history(
+            self.SAMPLE_HTML,
+            {
+                "Docker Hub Registry": "Docker Hub",
+                "Docker Authentication": "Docker Hub",
+            },
+        )
         assert "Docker Hub" in incidents[0]["services"]
 
     def test_parses_severity(self):
         from status_feeds import _parse_statusio_history
-        incidents = _parse_statusio_history(self.SAMPLE_HTML, {
-            "Docker Hub Registry": "Docker Hub",
-        })
+
+        incidents = _parse_statusio_history(
+            self.SAMPLE_HTML,
+            {
+                "Docker Hub Registry": "Docker Hub",
+            },
+        )
         assert incidents[0]["impact"] == "major"  # Partial Service Disruption = major
 
     def test_parses_updates_newest_first(self):
         from status_feeds import _parse_statusio_history
-        incidents = _parse_statusio_history(self.SAMPLE_HTML, {
-            "Docker Hub Registry": "Docker Hub",
-        })
+
+        incidents = _parse_statusio_history(
+            self.SAMPLE_HTML,
+            {
+                "Docker Hub Registry": "Docker Hub",
+            },
+        )
         updates = incidents[0]["updates"]
         assert len(updates) == 2
         # Newest-first order (matching Statuspage API convention)
@@ -1196,9 +1368,13 @@ class TestScrapeStatusioHistory:
 
     def test_resolved_incident_has_resolved_status(self):
         from status_feeds import _parse_statusio_history
-        incidents = _parse_statusio_history(self.SAMPLE_HTML, {
-            "Docker Hub Registry": "Docker Hub",
-        })
+
+        incidents = _parse_statusio_history(
+            self.SAMPLE_HTML,
+            {
+                "Docker Hub Registry": "Docker Hub",
+            },
+        )
         assert incidents[0]["status"] == "resolved"
 
 
@@ -1207,19 +1383,22 @@ class TestPollStatusFeed:
 
     def test_creates_one_incident_per_affected_service(self):
         from app import poll_status_feed
-        feed_results = [{
-            "external_id": "test-multi-svc",
-            "title": "Multi-service outage",
-            "status": "resolved",
-            "impact": "major",
-            "services": ["ServiceA", "ServiceB", "ServiceC"],
-            "created_at": "2026-02-14T10:00:00Z",
-            "resolved_at": "2026-02-14T12:00:00Z",
-            "source": "TestFeed",
-            "updates": [
-                {"status": "investigating", "message": "Looking into it"},
-            ],
-        }]
+
+        feed_results = [
+            {
+                "external_id": "test-multi-svc",
+                "title": "Multi-service outage",
+                "status": "resolved",
+                "impact": "major",
+                "services": ["ServiceA", "ServiceB", "ServiceC"],
+                "created_at": "2026-02-14T10:00:00Z",
+                "resolved_at": "2026-02-14T12:00:00Z",
+                "source": "TestFeed",
+                "updates": [
+                    {"status": "investigating", "message": "Looking into it"},
+                ],
+            }
+        ]
         with patch("app.poll_feed", return_value=feed_results):
             poll_status_feed({"name": "TestFeed"})
 
@@ -1235,19 +1414,21 @@ class TestPollStatusFeed:
 
     def test_skips_already_imported_incidents(self):
         from app import poll_status_feed
+
         # Pre-create incident
         database.create_incident(
-            title="Existing", external_id="existing-123",
-            service_name="Svc"
+            title="Existing", external_id="existing-123", service_name="Svc"
         )
-        feed_results = [{
-            "external_id": "existing-123",
-            "title": "Existing incident",
-            "status": "investigating",
-            "services": ["Svc"],
-            "updates": [],
-            "source": "TestFeed",
-        }]
+        feed_results = [
+            {
+                "external_id": "existing-123",
+                "title": "Existing incident",
+                "status": "investigating",
+                "services": ["Svc"],
+                "updates": [],
+                "source": "TestFeed",
+            }
+        ]
         with patch("app.poll_feed", return_value=feed_results):
             poll_status_feed({"name": "TestFeed"})
 
@@ -1258,19 +1439,24 @@ class TestPollStatusFeed:
 
     def test_updates_status_to_resolved(self):
         from app import poll_status_feed
+
         # poll_status_feed creates external_id as "resolve-me:Svc" for per-service copies
-        inc_id = database.create_incident(
-            title="Open incident", external_id="resolve-me:Svc",
-            service_name="Svc", status="investigating"
+        database.create_incident(
+            title="Open incident",
+            external_id="resolve-me:Svc",
+            service_name="Svc",
+            status="investigating",
         )
-        feed_results = [{
-            "external_id": "resolve-me",
-            "title": "Open incident",
-            "status": "resolved",
-            "services": ["Svc"],
-            "updates": [],
-            "source": "TestFeed",
-        }]
+        feed_results = [
+            {
+                "external_id": "resolve-me",
+                "title": "Open incident",
+                "status": "resolved",
+                "services": ["Svc"],
+                "updates": [],
+                "source": "TestFeed",
+            }
+        ]
         with patch("app.poll_feed", return_value=feed_results):
             poll_status_feed({"name": "TestFeed"})
 
@@ -1280,12 +1466,15 @@ class TestPollStatusFeed:
 
     def test_skips_component_status_items(self):
         from app import poll_status_feed
-        feed_results = [{
-            "type": "component_status",
-            "service_name": "Svc",
-            "status": "operational",
-            "source": "TestFeed",
-        }]
+
+        feed_results = [
+            {
+                "type": "component_status",
+                "service_name": "Svc",
+                "status": "operational",
+                "source": "TestFeed",
+            }
+        ]
         with patch("app.poll_feed", return_value=feed_results):
             poll_status_feed({"name": "TestFeed"})
         # No incidents should be created
@@ -1293,14 +1482,17 @@ class TestPollStatusFeed:
 
     def test_incident_with_no_services_uses_none(self):
         from app import poll_status_feed
-        feed_results = [{
-            "external_id": "no-svc-123",
-            "title": "Unknown service outage",
-            "status": "investigating",
-            "services": None,
-            "updates": [{"status": "investigating", "message": "Looking into it"}],
-            "source": "TestFeed",
-        }]
+
+        feed_results = [
+            {
+                "external_id": "no-svc-123",
+                "title": "Unknown service outage",
+                "status": "investigating",
+                "services": None,
+                "updates": [{"status": "investigating", "message": "Looking into it"}],
+                "source": "TestFeed",
+            }
+        ]
         with patch("app.poll_feed", return_value=feed_results):
             poll_status_feed({"name": "TestFeed"})
 

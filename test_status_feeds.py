@@ -2,7 +2,12 @@
 
 from unittest.mock import patch, MagicMock
 
-from status_feeds import poll_statuspage_api, poll_azure_rss, poll_feed, _match_azure_services
+from status_feeds import (
+    poll_statuspage_api,
+    poll_azure_rss,
+    poll_feed,
+    _match_azure_services,
+)
 
 
 MOCK_COMPONENTS_JSON = {
@@ -50,6 +55,7 @@ class TestPollStatuspageAPI:
             "components": {"Actions": "GitHub Actions"},
         }
         with patch("status_feeds.SESSION.get") as mock_get:
+
             def mock_response(url, **kwargs):
                 resp = MagicMock()
                 resp.status_code = 200
@@ -77,6 +83,7 @@ class TestPollStatuspageAPI:
             "components": {"Actions": "GitHub Actions"},
         }
         with patch("status_feeds.SESSION.get") as mock_get:
+
             def mock_response(url, **kwargs):
                 resp = MagicMock()
                 resp.status_code = 200
@@ -101,6 +108,7 @@ class TestPollStatuspageAPI:
             "components": {"SomethingElse": "Mapped"},
         }
         with patch("status_feeds.SESSION.get") as mock_get:
+
             def mock_response(url, **kwargs):
                 resp = MagicMock()
                 resp.status_code = 200
@@ -229,7 +237,9 @@ class TestPollFeed:
     def test_dispatches_to_azure_rss(self):
         with patch("status_feeds.poll_azure_rss") as mock:
             mock.return_value = []
-            poll_feed({"name": "Azure", "type": "azure_rss", "url": "https://example.com"})
+            poll_feed(
+                {"name": "Azure", "type": "azure_rss", "url": "https://example.com"}
+            )
             mock.assert_called_once()
 
 
@@ -260,9 +270,7 @@ class TestMatchAzureServices:
         assert "Azure AD / Entra ID" in result
 
     def test_matches_multiple_services(self):
-        result = _match_azure_services(
-            "AKS and Entra ID failures across UK South"
-        )
+        result = _match_azure_services("AKS and Entra ID failures across UK South")
         assert "Azure Kubernetes Service (AKS)" in result
         assert "Azure AD / Entra ID" in result
 
@@ -276,8 +284,7 @@ class TestMatchAzureServices:
 
     def test_matches_from_description_too(self):
         result = _match_azure_services(
-            "Service issue detected",
-            description="Cosmos DB experiencing throttling"
+            "Service issue detected", description="Cosmos DB experiencing throttling"
         )
         assert "Azure Cosmos DB" in result
 
@@ -312,8 +319,10 @@ class TestAzureRSSServiceMatching:
             </item>
         </channel></rss>"""
         feed = {
-            "name": "Azure", "url": "https://example.com",
-            "type": "azure_rss", "exclude_regions": [],
+            "name": "Azure",
+            "url": "https://example.com",
+            "type": "azure_rss",
+            "exclude_regions": [],
         }
         with patch("status_feeds.SESSION.get") as mock_get:
             resp = MagicMock()
@@ -337,8 +346,10 @@ class TestAzureRSSServiceMatching:
             </item>
         </channel></rss>"""
         feed = {
-            "name": "Azure", "url": "https://example.com",
-            "type": "azure_rss", "exclude_regions": [],
+            "name": "Azure",
+            "url": "https://example.com",
+            "type": "azure_rss",
+            "exclude_regions": [],
         }
         with patch("status_feeds.SESSION.get") as mock_get:
             resp = MagicMock()

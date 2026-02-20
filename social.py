@@ -2,7 +2,6 @@
 
 import logging
 import os
-import time
 from datetime import datetime, timezone
 
 import requests
@@ -32,17 +31,19 @@ def search_reddit(query, limit=5, timeframe="day"):
         results = []
         for p in posts:
             d = p["data"]
-            results.append({
-                "source": "reddit",
-                "subreddit": d.get("subreddit", ""),
-                "title": d.get("title", ""),
-                "url": f"https://reddit.com{d.get('permalink', '')}",
-                "score": d.get("score", 0),
-                "num_comments": d.get("num_comments", 0),
-                "created": datetime.fromtimestamp(
-                    d.get("created_utc", 0), tz=timezone.utc
-                ).strftime("%Y-%m-%d %H:%M UTC"),
-            })
+            results.append(
+                {
+                    "source": "reddit",
+                    "subreddit": d.get("subreddit", ""),
+                    "title": d.get("title", ""),
+                    "url": f"https://reddit.com{d.get('permalink', '')}",
+                    "score": d.get("score", 0),
+                    "num_comments": d.get("num_comments", 0),
+                    "created": datetime.fromtimestamp(
+                        d.get("created_utc", 0), tz=timezone.utc
+                    ).strftime("%Y-%m-%d %H:%M UTC"),
+                }
+            )
         return results
     except Exception as e:
         logger.warning("Reddit search failed: %s", e)

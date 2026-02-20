@@ -3,7 +3,14 @@
 from unittest.mock import patch, MagicMock
 import socket
 
-from checker import check_http, check_tcp, check_dns, check_script, check_dns_bar, run_check
+from checker import (
+    check_http,
+    check_tcp,
+    check_dns,
+    check_script,
+    check_dns_bar,
+    run_check,
+)
 
 
 class TestCheckHTTP:
@@ -12,7 +19,9 @@ class TestCheckHTTP:
             mock_resp = MagicMock()
             mock_resp.status_code = 200
             mock_get.return_value = mock_resp
-            status, ms, err = check_http({"url": "https://example.com", "expected_status": 200})
+            status, ms, err = check_http(
+                {"url": "https://example.com", "expected_status": 200}
+            )
             assert status == "up"
             assert ms is not None
             assert err is None
@@ -47,6 +56,7 @@ class TestCheckHTTP:
 
     def test_connection_error(self):
         import requests as req
+
         with patch("checker.requests.get") as mock_get:
             mock_get.side_effect = req.RequestException("Connection refused")
             status, ms, err = check_http({"url": "https://example.com"})
@@ -55,8 +65,10 @@ class TestCheckHTTP:
             assert "Connection refused" in err
 
     def test_auth_token_env(self):
-        with patch("checker.requests.get") as mock_get, \
-             patch.dict("os.environ", {"MY_TOKEN": "secret123"}):
+        with (
+            patch("checker.requests.get") as mock_get,
+            patch.dict("os.environ", {"MY_TOKEN": "secret123"}),
+        ):
             mock_resp = MagicMock()
             mock_resp.status_code = 200
             mock_get.return_value = mock_resp
@@ -69,7 +81,9 @@ class TestCheckHTTP:
             mock_resp = MagicMock()
             mock_resp.status_code = 401
             mock_get.return_value = mock_resp
-            status, ms, err = check_http({"url": "https://example.com", "expected_status": 401})
+            status, ms, err = check_http(
+                {"url": "https://example.com", "expected_status": 401}
+            )
             assert status == "up"
 
 
@@ -126,10 +140,12 @@ class TestCheckDNSBar:
     def test_all_targets_up(self):
         with patch("checker.socket.getaddrinfo") as mock_dns:
             mock_dns.return_value = [("AF_INET", None, None, None, ("1.2.3.4", 0))]
-            results = check_dns_bar([
-                {"hostname": "example.com", "label": "Example"},
-                {"hostname": "test.com", "label": "Test"},
-            ])
+            results = check_dns_bar(
+                [
+                    {"hostname": "example.com", "label": "Example"},
+                    {"hostname": "test.com", "label": "Test"},
+                ]
+            )
             assert len(results) == 2
             assert all(r["status"] == "up" for r in results)
             assert all(r["ms"] is not None for r in results)
@@ -141,10 +157,12 @@ class TestCheckDNSBar:
             return [("AF_INET", None, None, None, ("1.2.3.4", 0))]
 
         with patch("checker.socket.getaddrinfo", side_effect=side_effect):
-            results = check_dns_bar([
-                {"hostname": "good.com", "label": "Good"},
-                {"hostname": "bad.com", "label": "Bad"},
-            ])
+            results = check_dns_bar(
+                [
+                    {"hostname": "good.com", "label": "Good"},
+                    {"hostname": "bad.com", "label": "Bad"},
+                ]
+            )
             assert results[0]["status"] == "up"
             assert results[1]["status"] == "down"
             assert results[1]["error"] is not None

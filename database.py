@@ -97,7 +97,9 @@ def record_page_view(path, ip=None, user_agent=None, referrer=None):
 
 
 def get_page_view_stats(days=30):
-    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
     with get_db() as db:
         # Total views
         total = db.execute(
@@ -145,10 +147,16 @@ def get_page_view_stats(days=30):
 
 def cleanup_old_checks(retention_days=90):
     """Delete check_results and page_views older than retention_days."""
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
     with get_db() as db:
-        checks = db.execute("DELETE FROM check_results WHERE checked_at < ?", (cutoff,)).rowcount
-        views = db.execute("DELETE FROM page_views WHERE viewed_at < ?", (cutoff,)).rowcount
+        checks = db.execute(
+            "DELETE FROM check_results WHERE checked_at < ?", (cutoff,)
+        ).rowcount
+        views = db.execute(
+            "DELETE FROM page_views WHERE viewed_at < ?", (cutoff,)
+        ).rowcount
         if checks + views > 0:
             db.execute("PRAGMA optimize")
         return checks + views
@@ -177,7 +185,9 @@ def get_latest_status(service_names):
 
 
 def get_uptime_days(service_name, days=90):
-    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
     with get_db() as db:
         rows = db.execute(
             """SELECT date(checked_at) as day,
@@ -204,7 +214,9 @@ def get_incident_downtime_hours(service_name, days=90):
     actual incident duration.  Falls back to an estimate based on impact
     when timestamps are missing.
     """
-    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
     with get_db() as db:
         rows = db.execute(
             """SELECT created_at, resolved_at, impact
@@ -217,8 +229,12 @@ def get_incident_downtime_hours(service_name, days=90):
         for row in rows:
             if row["created_at"] and row["resolved_at"]:
                 try:
-                    start = datetime.fromisoformat(row["created_at"].replace("Z", "+00:00"))
-                    end = datetime.fromisoformat(row["resolved_at"].replace("Z", "+00:00"))
+                    start = datetime.fromisoformat(
+                        row["created_at"].replace("Z", "+00:00")
+                    )
+                    end = datetime.fromisoformat(
+                        row["resolved_at"].replace("Z", "+00:00")
+                    )
                     hours = (end - start).total_seconds() / 3600.0
                     if hours > 0:
                         total_hours += hours
@@ -237,7 +253,9 @@ def get_incident_downtime_hours(service_name, days=90):
 
 
 def get_uptime_percentage(service_name, days=90):
-    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
     with get_db() as db:
         row = db.execute(
             """SELECT COUNT(*) as total,
@@ -354,7 +372,9 @@ def get_check_coverage_start(service_names):
 
 def get_incidents_by_day(days=90):
     """Get all incidents in the last N days, mapped to each day they overlap."""
-    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
     today = datetime.now(timezone.utc).date()
     with get_db() as db:
         rows = db.execute(
@@ -369,12 +389,16 @@ def get_incidents_by_day(days=90):
     for row in rows:
         inc = dict(row)
         try:
-            start = datetime.fromisoformat(inc["created_at"].replace("Z", "+00:00")).date()
+            start = datetime.fromisoformat(
+                inc["created_at"].replace("Z", "+00:00")
+            ).date()
         except (ValueError, TypeError):
             continue
         if inc.get("resolved_at"):
             try:
-                end = datetime.fromisoformat(inc["resolved_at"].replace("Z", "+00:00")).date()
+                end = datetime.fromisoformat(
+                    inc["resolved_at"].replace("Z", "+00:00")
+                ).date()
             except (ValueError, TypeError):
                 end = today
         else:
@@ -399,10 +423,17 @@ def get_incident_by_external_id(external_id):
         return dict(row) if row else None
 
 
-def create_incident(title, impact="minor", message="Investigating the issue.",
-                    service_name=None, external_id=None, created_at=None,
-                    resolved_at=None, status="investigating",
-                    initial_status=None):
+def create_incident(
+    title,
+    impact="minor",
+    message="Investigating the issue.",
+    service_name=None,
+    external_id=None,
+    created_at=None,
+    resolved_at=None,
+    status="investigating",
+    initial_status=None,
+):
     """Create an incident with its first update.
 
     ``initial_status`` sets the label on the first update (defaults to
@@ -432,7 +463,9 @@ def update_incident(incident_id, status, message, created_at=None, resolved_at=N
             "INSERT INTO incident_updates (incident_id, status, message, created_at) VALUES (?, ?, ?, COALESCE(?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')))",
             (incident_id, status, message, created_at),
         )
-        db.execute("UPDATE incidents SET status = ? WHERE id = ?", (status, incident_id))
+        db.execute(
+            "UPDATE incidents SET status = ? WHERE id = ?", (status, incident_id)
+        )
         if status == "resolved":
             if resolved_at:
                 db.execute(

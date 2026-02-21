@@ -674,11 +674,14 @@ details[open] .services.expanded {
     overflow: visible;
 }
 
-/* Expand/collapse for incident details — JS drives height */
+/* Expand/collapse for incident details — JS drives height.
+   padding-top provides gap between title and updates without
+   causing layout shift during the height animation. */
 .incident-updates-body {
     overflow: hidden;
     height: 0;
     opacity: 0;
+    padding-top: 10px;
     transition: height 0.25s ease, opacity 0.2s ease;
 }
 
@@ -813,12 +816,6 @@ details[open] .services.expanded {
     letter-spacing: -0.01em;
 }
 
-/* Gap between title and updates is on the body, not the title,
-   so it doesn't cause a layout shift during the height animation. */
-.incident-updates-body {
-    padding-top: 10px;
-}
-
 .incident-title::before {
     content: "\25B6";
     font-size: 8px;
@@ -838,12 +835,6 @@ details[open] .services.expanded {
 
 .incident-title:hover {
     color: var(--text);
-}
-
-/* Smooth expand for incident updates */
-.incident-updates-body {
-    overflow: hidden;
-    animation: fadeIn 0.2s ease both;
 }
 
 .incident-tag {

@@ -437,6 +437,7 @@
             content.removeEventListener('transitionend', done);
             content.style.transition = '';
             content.style.height = 'auto';
+            content.style.opacity = '';
             content.classList.add('expanded');
             details._animating = false;
         }

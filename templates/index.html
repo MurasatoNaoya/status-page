@@ -416,8 +416,9 @@
         details.setAttribute('open', '');
         var content = getContent(details);
         if (!content) { details._animating = false; return; }
-        // Measure natural height
+        // Measure natural height (clear any leftover inline padding first)
         content.style.transition = 'none';
+        content.style.paddingTop = '';
         content.style.height = 'auto';
         content.style.opacity = '1';
         var h = content.scrollHeight;
@@ -434,6 +435,7 @@
         function done(e) {
             if (e.propertyName !== 'height') return;
             content.removeEventListener('transitionend', done);
+            content.style.transition = '';
             content.style.height = 'auto';
             content.classList.add('expanded');
             details._animating = false;
@@ -454,14 +456,23 @@
         content.style.transition = 'none';
         content.offsetHeight; // force reflow with locked height
         var dur = Math.min(0.4, Math.max(0.2, h / 1500));
-        content.style.transition = 'height ' + dur + 's ease, opacity ' + dur + 's ease';
+        // Also transition padding-top to 0 so no space remains at height:0
+        content.style.transition = 'height ' + dur + 's ease, opacity ' + dur + 's ease, padding-top ' + dur + 's ease';
         content.style.height = '0px';
         content.style.opacity = '0';
+        content.style.paddingTop = '0';
         function done(e) {
             if (e.propertyName !== 'height') return;
             content.removeEventListener('transitionend', done);
-            content.style.overflow = '';
+            // Remove open — browser hides content via display:none
             details.removeAttribute('open');
+            // Clear all inline styles; CSS defaults apply but display:none
+            // means they occupy no space
+            content.style.overflow = '';
+            content.style.height = '';
+            content.style.opacity = '';
+            content.style.paddingTop = '';
+            content.style.transition = '';
             details._animating = false;
         }
         content.addEventListener('transitionend', done);

@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ page.get('title', 'Status') }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    {% set _fav = {'operational':'%2376AD2A','degraded':'%23FAA72A','major_outage':'%23E04343'} -%}
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='8' fill='{{ _fav.get(overall, _fav.operational) }}'/></svg>">
 </head>
 <body>
     {# Encode tooltip data as compact JSON attribute instead of inline HTML.

@@ -3,8 +3,6 @@ import shlex
 import socket
 import subprocess
 import time
-import xml.etree.ElementTree as ET
-
 import requests
 
 
@@ -78,52 +76,6 @@ def check_script(service):
         return "down", None, str(e)
 
 
-def check_azure_status(service):
-    """Check Azure status page for active incidents in a given region.
-
-    Uses the main status page since the RSS feed has SSL cert issues.
-    When the feed is empty (no incidents), the region is operational.
-    Falls back to checking if the status page itself is reachable.
-    """
-    region = service.get("region", "UK South")
-    timeout = service.get("timeout", 15)
-
-    # Try RSS feed first (works from most environments)
-    feed_url = "https://rssfeed.azure.status.microsoft/en-us/status/feed/"
-    try:
-        start = time.monotonic()
-        resp = requests.get(feed_url, timeout=timeout)
-        elapsed_ms = (time.monotonic() - start) * 1000
-
-        if resp.status_code == 200:
-            root = ET.fromstring(resp.content)
-            items = root.findall(".//item")
-            region_incidents = []
-            for item in items:
-                title = item.findtext("title", "")
-                desc = item.findtext("description", "")
-                if region.lower() in title.lower() or region.lower() in desc.lower():
-                    region_incidents.append(title)
-
-            if region_incidents:
-                return "down", elapsed_ms, "; ".join(region_incidents[:3])
-            return "up", elapsed_ms, None
-    except (requests.RequestException, ET.ParseError):
-        pass
-
-    # Fallback: just check if the status page is reachable
-    status_url = "https://azure.status.microsoft/en-us/status"
-    try:
-        start = time.monotonic()
-        resp = requests.get(status_url, timeout=timeout)
-        elapsed_ms = (time.monotonic() - start) * 1000
-        if resp.status_code == 200:
-            return "up", elapsed_ms, None
-        return "down", elapsed_ms, f"Status page returned HTTP {resp.status_code}"
-    except requests.RequestException as e:
-        return "down", None, str(e)
-
-
 def check_dns_bar(targets):
     """Resolve multiple DNS targets and return per-target results.
 
@@ -164,7 +116,6 @@ CHECKERS = {
     "tcp": check_tcp,
     "dns": check_dns,
     "script": check_script,
-    "azure_status": check_azure_status,
 }
 
 

@@ -12,6 +12,23 @@
        A single shared tooltip div is populated by JS on hover. #}
     {% macro day_tip_data(day) %}data-tip='{{ {'d': day.date | format_day, 'p': day.uptime_pct, 's': day.severity, 'dc': day.down_count, 'dh': day.downtime_hours, 'dm': day.downtime_mins, 'i': day.incidents[:3] | map(attribute='title') | list if day.incidents else [], 'e': day.errors[:3] if day.errors else []} | tojson }}'{% endmacro %}
 
+    {% macro uptime_bar(item) %}
+    <div class="uptime-bar">
+        {% for day in item.days %}
+        <div class="uptime-day {% if day.severity == 'major' %}down{% elif day.severity == 'partial' %}partial{% elif day.severity == 'degraded' %}degraded{% elif day.uptime_pct is none %}no-data{% else %}up{% endif %}"{% if day.incidents %} data-incident-id="{{ day.incidents[0].id }}"{% endif %} {{ day_tip_data(day) }}></div>
+        {% endfor %}
+    </div>
+    <div class="uptime-footer">
+        <span>90 days ago</span>
+        <span class="uptime-line"></span>
+        {% if item.uptime_pct is not none %}
+            <span class="uptime-pct">{{ item.uptime_pct }}% uptime</span>
+            <span class="uptime-line"></span>
+        {% endif %}
+        <span>Today</span>
+    </div>
+    {% endmacro %}
+
     <div class="container">
         <header>
             <div class="header-row">
@@ -21,10 +38,7 @@
                 </div>
                 <div class="header-actions">
                     <a href="{{ url_for('admin_panel') }}" class="admin-link">Admin Panel</a>
-                    <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode">
-                        <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-                        <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-                    </button>
+                    {% include '_theme_toggle.html' %}
                 </div>
             </div>
         </header>
@@ -85,20 +99,7 @@
                         {% endif %}
                     </div>
                 </div>
-                <div class="uptime-bar">
-                    {% for day in dns_bar.days %}
-                    <div class="uptime-day {% if day.severity == 'major' %}down{% elif day.severity == 'partial' %}partial{% elif day.severity == 'degraded' %}degraded{% elif day.uptime_pct is none %}no-data{% else %}up{% endif %}"{% if day.incidents %} data-incident-id="{{ day.incidents[0].id }}"{% endif %} {{ day_tip_data(day) }}></div>
-                    {% endfor %}
-                </div>
-                <div class="uptime-footer">
-                    <span>90 days ago</span>
-                    <span class="uptime-line"></span>
-                    {% if dns_bar.uptime_pct is not none %}
-                        <span class="uptime-pct">{{ dns_bar.uptime_pct }}% uptime</span>
-                        <span class="uptime-line"></span>
-                    {% endif %}
-                    <span>Today</span>
-                </div>
+                {{ uptime_bar(dns_bar) }}
                 {% if dns_bar.error %}
                 <div class="service-error">{{ dns_bar.error }}</div>
                 {% endif %}
@@ -127,21 +128,7 @@
                     </div>
                 </div>
 
-                <!-- 90-day uptime bar -->
-                <div class="uptime-bar">
-                    {% for day in svc.days %}
-                    <div class="uptime-day {% if day.severity == 'major' %}down{% elif day.severity == 'partial' %}partial{% elif day.severity == 'degraded' %}degraded{% elif day.uptime_pct is none %}no-data{% else %}up{% endif %}"{% if day.incidents %} data-incident-id="{{ day.incidents[0].id }}"{% endif %} {{ day_tip_data(day) }}></div>
-                    {% endfor %}
-                </div>
-                <div class="uptime-footer">
-                    <span>90 days ago</span>
-                    <span class="uptime-line"></span>
-                    {% if svc.uptime_pct is not none %}
-                        <span class="uptime-pct">{{ svc.uptime_pct }}% uptime</span>
-                        <span class="uptime-line"></span>
-                    {% endif %}
-                    <span>Today</span>
-                </div>
+                {{ uptime_bar(svc) }}
 
                 {% if svc.error %}
                 <div class="service-error">{{ svc.error }}</div>
@@ -180,20 +167,7 @@
                         </span>
                     </div>
                 </div>
-                <div class="uptime-bar">
-                    {% for day in group.days %}
-                    <div class="uptime-day {% if day.severity == 'major' %}down{% elif day.severity == 'partial' %}partial{% elif day.severity == 'degraded' %}degraded{% elif day.uptime_pct is none %}no-data{% else %}up{% endif %}"{% if day.incidents %} data-incident-id="{{ day.incidents[0].id }}"{% endif %} {{ day_tip_data(day) }}></div>
-                    {% endfor %}
-                </div>
-                <div class="uptime-footer">
-                    <span>90 days ago</span>
-                    <span class="uptime-line"></span>
-                    {% if group.uptime_pct is not none %}
-                        <span class="uptime-pct">{{ group.uptime_pct }}% uptime</span>
-                        <span class="uptime-line"></span>
-                    {% endif %}
-                    <span>Today</span>
-                </div>
+                {{ uptime_bar(group) }}
             </div>
 
             <details>
@@ -224,20 +198,7 @@
                             </div>
                         </div>
 
-                        <div class="uptime-bar">
-                            {% for day in svc.days %}
-                            <div class="uptime-day {% if day.severity == 'major' %}down{% elif day.severity == 'partial' %}partial{% elif day.severity == 'degraded' %}degraded{% elif day.uptime_pct is none %}no-data{% else %}up{% endif %}"{% if day.incidents %} data-incident-id="{{ day.incidents[0].id }}"{% endif %} {{ day_tip_data(day) }}></div>
-                            {% endfor %}
-                        </div>
-                        <div class="uptime-footer">
-                            <span>90 days ago</span>
-                            <span class="uptime-line"></span>
-                            {% if svc.uptime_pct is not none %}
-                                <span class="uptime-pct">{{ svc.uptime_pct }}% uptime</span>
-                                <span class="uptime-line"></span>
-                            {% endif %}
-                            <span>Today</span>
-                        </div>
+                        {{ uptime_bar(svc) }}
                     </div>
                     {% endfor %}
                 </div>

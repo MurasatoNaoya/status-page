@@ -1,3 +1,4 @@
+import atexit
 import hmac
 import logging
 import os
@@ -1088,6 +1089,8 @@ if os.environ.get("DISABLE_SCHEDULER"):
     _scheduler = None
 elif os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
     _scheduler = _startup()
+    if _scheduler is not None:
+        atexit.register(_scheduler.shutdown)
 else:
     # First reloader process — skip init, the child will handle it
     _scheduler = None

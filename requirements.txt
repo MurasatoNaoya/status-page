@@ -1,5 +1,6 @@
 flask>=3.0
 apscheduler>=3.10
+gunicorn>=22.0
 pyyaml>=6.0
 requests>=2.31
 pytest>=8.0

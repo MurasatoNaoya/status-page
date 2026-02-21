@@ -1,0 +1,14 @@
+[Unit]
+Description=Status Page
+After=network.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/status-page
+ExecStart=/home/pi/status-page/.venv/bin/gunicorn -c gunicorn.conf.py app:app
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

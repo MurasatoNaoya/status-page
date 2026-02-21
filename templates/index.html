@@ -5,8 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ page.get('title', 'Status') }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    {% set _fav = {'operational':'%2376AD2A','degraded':'%23FAA72A','major_outage':'%23E04343'} -%}
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='8' fill='{{ _fav.get(overall, _fav.operational) }}'/></svg>">
+    {% if overall == 'operational' -%}
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><circle cx='32' cy='32' r='30' fill='%2376AD2A'/><path d='M20 33l8 8 16-16' stroke='white' stroke-width='6' stroke-linecap='round' stroke-linejoin='round' fill='none'/></svg>">
+    {% elif overall == 'degraded' -%}
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><path d='M32 4L60 56H4Z' fill='%23FAA72A' stroke='%23E8960A' stroke-width='2' stroke-linejoin='round'/><rect x='29' y='22' width='6' height='18' rx='3' fill='white'/><circle cx='32' cy='47' r='3.5' fill='white'/></svg>">
+    {% else -%}
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><circle cx='32' cy='32' r='30' fill='%23E04343'/><path d='M22 22l20 20M42 22L22 42' stroke='white' stroke-width='6' stroke-linecap='round'/></svg>">
+    {% endif -%}
 </head>
 <body>
     {# Encode tooltip data as compact JSON attribute instead of inline HTML.

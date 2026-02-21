@@ -225,6 +225,44 @@ class TestPollStatuspageAPI:
         assert len(incidents) == 1
         assert "Red Hat Quay.io" in incidents[0]["services"]
 
+    def test_short_base_name_does_not_match(self):
+        """Base names shorter than 4 chars should not false-positive match."""
+        feed = {
+            "name": "Test",
+            "url": "https://example.com/api/v2",
+            "components": {"AB.io": "Short Service"},
+        }
+        mock_incidents = {
+            "incidents": [
+                {
+                    "id": "short1",
+                    "name": "Absolute connectivity breakdown",
+                    "status": "resolved",
+                    "impact": "minor",
+                    "created_at": "2026-01-01T00:00:00Z",
+                    "resolved_at": "2026-01-01T01:00:00Z",
+                    "components": [],
+                    "incident_updates": [],
+                }
+            ]
+        }
+        with patch("status_feeds.SESSION.get") as mock_get:
+
+            def mock_response(url, **kwargs):
+                resp = MagicMock()
+                resp.raise_for_status = MagicMock()
+                if "components.json" in url:
+                    resp.json.return_value = {"components": []}
+                else:
+                    resp.json.return_value = mock_incidents
+                return resp
+
+            mock_get.side_effect = mock_response
+            results = poll_statuspage_api(feed)
+
+        incidents = [r for r in results if r.get("type") != "component_status"]
+        assert len(incidents) == 0
+
 
 MOCK_AZURE_RSS = """<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">

@@ -366,7 +366,7 @@ class TestAdminLogin:
 
     def test_logout(self, page, live_server, admin_session):
         # admin_session logs us in; now click logout (POST form)
-        admin_session.click('button.admin-nav-logout')
+        admin_session.click("button.admin-nav-logout")
         # Logout redirects to index
         admin_session.wait_for_url(live_server + "/")
         # Verify we can't access admin anymore
@@ -375,7 +375,7 @@ class TestAdminLogin:
 
     def test_admin_panel_has_nav_links(self, page, live_server, admin_session):
         expect(admin_session.locator('a[href*="metrics"]')).to_be_visible()
-        expect(admin_session.locator('button.admin-nav-logout')).to_be_visible()
+        expect(admin_session.locator("button.admin-nav-logout")).to_be_visible()
 
     def test_sso_button_disabled(self, page, live_server):
         page.goto(f"{live_server}/admin/login")
@@ -534,7 +534,7 @@ class TestAdminBackfillAndMetrics:
     def test_metrics_nav_links(self, page, live_server, admin_session):
         admin_session.goto(f"{live_server}/admin/metrics")
         expect(admin_session.locator('a[href*="admin"]').first).to_be_visible()
-        expect(admin_session.locator('button.admin-nav-logout')).to_be_visible()
+        expect(admin_session.locator("button.admin-nav-logout")).to_be_visible()
 
 
 # ── Loop 8: Edge Cases + Error Handling ────────────────────────────────────

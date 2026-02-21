@@ -125,7 +125,11 @@ def track_page_view():
     # Only track actual page views (GET), not static files, API calls, or form POSTs
     if request.method != "GET":
         return
-    if request.path.startswith("/static") or request.path.startswith("/api") or request.path == "/favicon.ico":
+    if (
+        request.path.startswith("/static")
+        or request.path.startswith("/api")
+        or request.path == "/favicon.ico"
+    ):
         return
     record_page_view(
         path=request.path,

@@ -205,6 +205,20 @@ AZURE_SERVICE_KEYWORDS = {
 }
 
 
+_AZURE_MAJOR_KEYWORDS = ["outage", "unavailable", "down", "loss of service"]
+_AZURE_PARTIAL_KEYWORDS = ["failure", "disruption", "unable", "errors", "not working"]
+
+
+def _classify_azure_impact(text):
+    """Classify impact level from Azure incident text."""
+    lower = text.lower()
+    if any(w in lower for w in _AZURE_MAJOR_KEYWORDS):
+        return "major"
+    if any(w in lower for w in _AZURE_PARTIAL_KEYWORDS):
+        return "partial"
+    return "minor"
+
+
 def _match_azure_services(title, description=""):
     """Match Azure incident text to our configured service names.
 
@@ -259,28 +273,14 @@ def poll_azure_rss(feed_config):
                 pass
 
             # Determine impact from title/description keywords
-            title_lower = title.lower()
-            desc_lower = description.lower() if description else ""
-            combined_lower = title_lower + " " + desc_lower
-            if any(
-                w in combined_lower
-                for w in ["outage", "unavailable", "down", "loss of service"]
-            ):
-                impact = "major"
-            elif any(
-                w in combined_lower
-                for w in ["failure", "disruption", "unable", "errors", "not working"]
-            ):
-                impact = "partial"
-            else:
-                impact = "minor"
+            impact = _classify_azure_impact(combined)
 
             # Match to our configured Azure services by keywords
             matched_services = _match_azure_services(title, description)
 
             # Determine status from content — don't assume all RSS items are resolved
             is_resolved = any(
-                w in desc_lower
+                w in combined
                 for w in [
                     "resolved",
                     "mitigated",
@@ -475,14 +475,7 @@ def _parse_azure_history(html, exclude_regions=None):
             resolved_at = created_at
 
         # Determine impact from keywords
-        if any(
-            w in combined for w in ["outage", "unavailable", "down", "loss of service"]
-        ):
-            impact = "major"
-        elif any(w in combined for w in ["failure", "disruption", "unable", "errors"]):
-            impact = "partial"
-        else:
-            impact = "minor"
+        impact = _classify_azure_impact(combined)
 
         # Match to configured Azure services
         matched_services = _match_azure_services(title, body)

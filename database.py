@@ -311,22 +311,27 @@ def get_uptime_percentage(service_name, days=90):
     return None
 
 
+def _attach_updates(db, incidents):
+    """Decorate incident rows with their updates."""
+    result = []
+    for inc in incidents:
+        inc_dict = dict(inc)
+        updates = db.execute(
+            "SELECT * FROM incident_updates WHERE incident_id = ? ORDER BY created_at DESC, id DESC",
+            (inc["id"],),
+        ).fetchall()
+        inc_dict["updates"] = [dict(u) for u in updates]
+        result.append(inc_dict)
+    return result
+
+
 def get_active_incidents():
     """Get unresolved incidents (investigating, identified, monitoring)."""
     with get_db() as db:
         incidents = db.execute(
             "SELECT * FROM incidents WHERE resolved_at IS NULL ORDER BY created_at DESC"
         ).fetchall()
-        result = []
-        for inc in incidents:
-            inc_dict = dict(inc)
-            updates = db.execute(
-                "SELECT * FROM incident_updates WHERE incident_id = ? ORDER BY created_at DESC, id DESC",
-                (inc["id"],),
-            ).fetchall()
-            inc_dict["updates"] = [dict(u) for u in updates]
-            result.append(inc_dict)
-        return result
+        return _attach_updates(db, incidents)
 
 
 def get_recent_incidents(limit=10):
@@ -334,16 +339,7 @@ def get_recent_incidents(limit=10):
         incidents = db.execute(
             "SELECT * FROM incidents ORDER BY created_at DESC LIMIT ?", (limit,)
         ).fetchall()
-        result = []
-        for inc in incidents:
-            inc_dict = dict(inc)
-            updates = db.execute(
-                "SELECT * FROM incident_updates WHERE incident_id = ? ORDER BY created_at DESC, id DESC",
-                (inc["id"],),
-            ).fetchall()
-            inc_dict["updates"] = [dict(u) for u in updates]
-            result.append(inc_dict)
-        return result
+        return _attach_updates(db, incidents)
 
 
 def get_active_incident_for_service(service_name):

@@ -6,22 +6,6 @@
     <title>Metrics - Admin</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <style>
-        .admin-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 24px 0;
-            border-bottom: 1px solid var(--border);
-        }
-        .admin-header h1 { font-size: 20px; font-weight: 600; }
-        .admin-nav { display: flex; gap: 12px; align-items: center; }
-        .admin-nav a {
-            font-size: 13px;
-            color: var(--text-secondary);
-            text-decoration: none;
-        }
-        .admin-nav a:hover { color: var(--text); }
-
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);

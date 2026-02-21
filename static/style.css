@@ -131,93 +131,6 @@ header p {
     margin-top: 2px;
 }
 
-/* DNS Resolution Bar */
-.dns-bar {
-    margin: 24px 0 0;
-    padding: 16px 20px;
-    border-radius: 0;
-    border: 1px solid var(--border);
-    background: var(--card-bg);
-}
-
-.dns-bar.down {
-    border-color: var(--incident-border);
-    background: var(--incident-bg);
-}
-
-.dns-bar-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-}
-
-.dns-bar-title {
-    font-size: 15px;
-    font-weight: 600;
-}
-
-.dns-bar-status {
-    font-size: 12px;
-    font-weight: 500;
-}
-
-.dns-bar.up .dns-bar-status {
-    color: var(--operational-text);
-}
-
-.dns-bar.down .dns-bar-status {
-    color: var(--incident-text);
-}
-
-.dns-bar-targets {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-}
-
-.dns-target {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    background: var(--bg);
-    border-radius: 8px;
-    font-size: 13px;
-    border: 1px solid var(--border);
-}
-
-.dns-target.down {
-    background: var(--incident-bg);
-    border-color: var(--incident-border);
-}
-
-.dns-target-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-}
-
-.dns-target-dot.up { background: var(--green); }
-.dns-target-dot.down { background: var(--red); }
-
-.dns-target-label {
-    font-weight: 500;
-}
-
-.dns-target-ms {
-    color: var(--text-secondary);
-    font-size: 11px;
-    font-family: var(--font-mono);
-}
-
-.dns-target-error {
-    color: #b71c1c;
-    font-size: 11px;
-    font-family: var(--font-mono);
-}
-
 /* Overall status banner */
 .overall-status {
     margin: 32px 0;
@@ -260,7 +173,7 @@ header p {
 .status-dot.degraded { background: var(--yellow); animation: pulse-yellow 1.5s ease-in-out infinite; }
 .status-dot.partial_outage { background: var(--orange); animation: pulse-orange 1.5s ease-in-out infinite; }
 .status-dot.major_outage { background: var(--red); animation: pulse-red 1s ease-in-out infinite; }
-.status-dot.maintenance { background: var(--blue); }
+
 
 @keyframes pulse-operational {
     0%, 100% { box-shadow: 0 0 0 0 rgba(118, 173, 42, 0.4); }
@@ -694,23 +607,6 @@ details[open] .services.expanded {
     color: var(--text);
 }
 
-.group-name {
-    font-size: 15px;
-    font-weight: 600;
-    flex: 1;
-}
-
-.group-meta {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.group-uptime {
-    font-size: 13px;
-    color: var(--text-secondary);
-}
-
 /* Incidents section */
 .incidents-section {
     margin-top: 56px;
@@ -908,6 +804,23 @@ details[open] .services.expanded {
     font-size: 14px;
     padding: 32px 0;
 }
+
+/* Admin header (shared by admin.html and admin_metrics.html) */
+.admin-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 24px 0;
+    border-bottom: 1px solid var(--border);
+}
+.admin-header h1 { font-size: 20px; font-weight: 600; }
+.admin-nav { display: flex; gap: 12px; align-items: center; }
+.admin-nav a {
+    font-size: 13px;
+    color: var(--text-secondary);
+    text-decoration: none;
+}
+.admin-nav a:hover { color: var(--text); }
 
 /* Footer */
 footer {

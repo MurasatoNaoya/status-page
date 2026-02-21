@@ -5,3 +5,5 @@ pyyaml>=6.0
 requests>=2.31
 pytest>=8.0
 pytest-playwright>=0.7
+# azure-identity>=1.15
+# azure-mgmt-resourcehealth>=1.0.0b5

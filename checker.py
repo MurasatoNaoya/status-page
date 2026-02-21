@@ -111,11 +111,102 @@ def check_dns_bar(targets):
     return results
 
 
+# --- Azure credential helper (shared by both checkers) ---
+# Creates a single CertificateCredential instance so token caching works
+# across repeated check invocations (CertificateCredential caches internally).
+#
+# _azure_credential = None
+#
+#
+# def _get_azure_credential():
+#     global _azure_credential
+#     if _azure_credential is None:
+#         from azure.identity import CertificateCredential
+#
+#         _azure_credential = CertificateCredential(
+#             tenant_id=os.environ["AZURE_TENANT_ID"],
+#             client_id=os.environ["AZURE_CLIENT_ID"],
+#             certificate_path=os.environ["AZURE_CLIENT_CERTIFICATE_PATH"],
+#         )
+#     return _azure_credential
+
+
+# --- Azure Service Health (subscription-wide incidents) ---
+# Requires: azure-identity, requests
+# Env vars: AZURE_TENANT_ID, AZURE_CLIENT_ID,
+#           AZURE_CLIENT_CERTIFICATE_PATH (.pfx), AZURE_SUBSCRIPTION_ID
+#
+# def check_azure_service_health(service):
+#     credential = _get_azure_credential()
+#     token = credential.get_token("https://management.azure.com/.default").token
+#     sub_id = service.get("subscription_id", os.environ["AZURE_SUBSCRIPTION_ID"])
+#
+#     # NOTE: $filter value may need "properties/eventType" — verify against live API
+#     url = (
+#         f"https://management.azure.com/subscriptions/{sub_id}"
+#         f"/providers/Microsoft.ResourceHealth/events"
+#         f"?api-version=2024-02-01"
+#         f"&$filter=eventType eq 'ServiceIssue'"
+#     )
+#     try:
+#         start = time.monotonic()
+#         resp = requests.get(
+#             url,
+#             headers={"Authorization": f"Bearer {token}"},
+#             timeout=service.get("timeout", 30),
+#         )
+#         elapsed_ms = (time.monotonic() - start) * 1000
+#         resp.raise_for_status()
+#         events = resp.json().get("value", [])
+#         active = [e for e in events if e.get("properties", {}).get("status") == "Active"]
+#         if active:
+#             titles = [e["properties"].get("title", "Unknown") for e in active]
+#             return "down", elapsed_ms, f"Active incidents: {'; '.join(titles)}"
+#         return "up", elapsed_ms, None
+#     except Exception as e:
+#         return "down", None, str(e)
+
+
+# --- Azure Resource Health (per-resource availability) ---
+# Config must include resource_id (full ARM resource path).
+#
+# def check_azure_resource_health(service):
+#     credential = _get_azure_credential()
+#     token = credential.get_token("https://management.azure.com/.default").token
+#     resource_id = service["resource_id"]
+#
+#     url = (
+#         f"https://management.azure.com{resource_id}"
+#         f"/providers/Microsoft.ResourceHealth/availabilityStatuses/current"
+#         f"?api-version=2024-02-01"
+#     )
+#     try:
+#         start = time.monotonic()
+#         resp = requests.get(
+#             url,
+#             headers={"Authorization": f"Bearer {token}"},
+#             timeout=service.get("timeout", 30),
+#         )
+#         elapsed_ms = (time.monotonic() - start) * 1000
+#         resp.raise_for_status()
+#         props = resp.json().get("properties", {})
+#         # Azure returns: Available, Unavailable, Degraded, Unknown
+#         # We map all non-Available to "down" (no degraded state in our model)
+#         status = props.get("availabilityState", "Unknown")
+#         if status == "Available":
+#             return "up", elapsed_ms, None
+#         return "down", elapsed_ms, f"Availability: {status}"
+#     except Exception as e:
+#         return "down", None, str(e)
+
+
 CHECKERS = {
     "http": check_http,
     "tcp": check_tcp,
     "dns": check_dns,
     "script": check_script,
+    # "azure_service_health": check_azure_service_health,
+    # "azure_resource_health": check_azure_resource_health,
 }
 
 

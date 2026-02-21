@@ -122,6 +122,64 @@ services: []
   #   command: "/path/to/check.sh"
   #   interval: 120
 
+  # --- Azure Resource Health (per-resource) ---
+  # Requires SPN with certificate auth. See .env.example for env vars.
+  # resource_id is the full ARM path to the resource.
+  #
+  # - name: "AKS Cluster Health"
+  #   type: azure_resource_health
+  #   resource_id: "/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.ContainerService/managedClusters/<aks-name>"
+  #   interval: 300
+  #
+  # - name: "App Gateway Health"
+  #   type: azure_resource_health
+  #   resource_id: "/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Network/applicationGateways/<appgw-name>"
+  #   interval: 300
+  #
+  # - name: "SQL Server Health"
+  #   type: azure_resource_health
+  #   resource_id: "/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Sql/servers/<sql-name>"
+  #   interval: 300
+  #
+  # - name: "VM Health"
+  #   type: azure_resource_health
+  #   resource_id: "/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Compute/virtualMachines/<vm-name>"
+  #   interval: 300
+
+  # --- Hybrid network DNS checks ---
+  # Test DNS resolution across on-prem / Azure boundaries.
+  #
+  # - name: "DB Private Link DNS"
+  #   type: dns
+  #   hostname: "myapp.privatelink.database.windows.net"
+  #   interval: 60
+  #
+  # - name: "On-Prem AD DNS"
+  #   type: dns
+  #   hostname: "dc01.corp.contoso.com"
+  #   interval: 60
+  #
+  # - name: "AKS Cluster DNS"
+  #   type: dns
+  #   hostname: "myaks.uksouth.azmk8s.io"
+  #   interval: 60
+
+  # --- VPN / ExpressRoute gateway connectivity ---
+  #
+  # - name: "VPN Gateway"
+  #   type: tcp
+  #   host: "10.0.0.1"
+  #   port: 443
+  #   timeout: 5
+  #   interval: 60
+  #
+  # - name: "ExpressRoute Gateway"
+  #   type: tcp
+  #   host: "10.1.0.1"
+  #   port: 443
+  #   timeout: 5
+  #   interval: 60
+
 groups:
   - name: "Azure (UK South)"
     services:

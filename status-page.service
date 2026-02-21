@@ -8,6 +8,7 @@ WorkingDirectory=/home/pi/status-page
 ExecStart=/home/pi/status-page/.venv/bin/gunicorn -c gunicorn.conf.py app:app
 Restart=always
 RestartSec=5
+EnvironmentFile=/home/pi/status-page/.env
 Environment=PYTHONUNBUFFERED=1
 
 [Install]

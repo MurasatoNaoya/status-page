@@ -125,7 +125,7 @@ def track_page_view():
     # Only track actual page views (GET), not static files, API calls, or form POSTs
     if request.method != "GET":
         return
-    if request.path.startswith("/static") or request.path.startswith("/api"):
+    if request.path.startswith("/static") or request.path.startswith("/api") or request.path == "/favicon.ico":
         return
     record_page_view(
         path=request.path,
@@ -163,8 +163,12 @@ def format_day(iso_date):
         return iso_date
 
 
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
 def load_config(path="config.yaml"):
-    with open(path) as f:
+    config_path = os.path.join(_APP_DIR, path) if not os.path.isabs(path) else path
+    with open(config_path) as f:
         return yaml.safe_load(f)
 
 
@@ -429,6 +433,10 @@ def start_scheduler():
     def _prune_login_failures():
         now = time.monotonic()
         with _login_lock:
+            # Hard cap: clear everything if too many tracked IPs (DDoS protection)
+            if len(_login_failures) > 10000:
+                _login_failures.clear()
+                return
             stale = [
                 ip
                 for ip, ts in _login_failures.items()
@@ -891,8 +899,11 @@ def admin_login():
     return render_template("admin_login.html")
 
 
-@app.route("/admin/logout")
+@app.route("/admin/logout", methods=["POST"])
 def admin_logout():
+    if not _check_csrf_token():
+        flash("Invalid form submission. Please try again.")
+        return redirect(url_for("admin_panel"))
     session.pop("admin", None)
     return redirect(url_for("index"))
 
@@ -948,9 +959,14 @@ def admin_declare_incident():
     if not _check_csrf_token():
         flash("Invalid form submission. Please try again.")
         return redirect(url_for("admin_panel"))
-    title = request.form["title"]
+    title = request.form.get("title", "").strip()[:255]
+    if not title:
+        flash("Incident title is required.")
+        return redirect(url_for("admin_panel"))
     impact = request.form.get("impact", "partial")
-    message = request.form.get("message", "Investigating the issue.")
+    if impact not in ("major", "partial", "minor"):
+        impact = "partial"
+    message = request.form.get("message", "Investigating the issue.").strip()[:2000]
     service = request.form.get("service") or None
 
     incident_id = create_incident(
@@ -1060,10 +1076,16 @@ def admin_feed_coverage():
 def _startup():
     """Initialise DB, clean orphans, backfill gaps, and start scheduler."""
     if ADMIN_PASS == "changeme":
-        logger.warning(
-            "*** Admin password is the default 'changeme'. "
-            "Set ADMIN_PASS env var for production. ***"
-        )
+        if app.debug or os.environ.get("DISABLE_SCHEDULER"):
+            logger.warning(
+                "*** Admin password is the default 'changeme'. "
+                "Set ADMIN_PASS env var for production. ***"
+            )
+        else:
+            raise RuntimeError(
+                "ADMIN_PASS is still 'changeme'. "
+                "Set the ADMIN_PASS environment variable before running in production."
+            )
     init_db()
 
     valid_names = [svc["name"] for svc in all_services()]

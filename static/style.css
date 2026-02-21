@@ -821,6 +821,8 @@ details[open] .services.expanded {
     text-decoration: none;
 }
 .admin-nav a:hover { color: var(--text); }
+.admin-nav-logout { background: none; border: none; font-size: 13px; color: var(--text-secondary); cursor: pointer; font-family: inherit; padding: 0; }
+.admin-nav-logout:hover { color: var(--text); }
 
 /* Footer */
 footer {

@@ -151,7 +151,10 @@ class TestAdminAuth:
             "/admin/login",
             data={"username": "admin", "password": "testpass", "_csrf_token": token},
         )
-        resp = app_client.get("/admin/logout")
+        token = _get_csrf_token(app_client)
+        resp = app_client.post(
+            "/admin/logout", data={"_csrf_token": token}
+        )
         assert resp.status_code == 302
         # Should be redirected away from admin after logout
         resp = app_client.get("/admin")

@@ -15,10 +15,6 @@ def get_db():
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     try:
-        conn.execute("PRAGMA journal_mode=WAL")
-    except sqlite3.OperationalError:
-        pass  # WAL already set or DB momentarily locked — non-critical
-    try:
         yield conn
         conn.commit()
     finally:
@@ -27,6 +23,10 @@ def get_db():
 
 def init_db():
     with get_db() as db:
+        try:
+            db.execute("PRAGMA journal_mode=WAL")
+        except sqlite3.OperationalError:
+            pass  # WAL already set or DB momentarily locked
         db.executescript("""
             CREATE TABLE IF NOT EXISTS check_results (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,6 +68,10 @@ def init_db():
                 message TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             );
+            CREATE INDEX IF NOT EXISTS idx_incident_updates_incident
+                ON incident_updates(incident_id);
+            CREATE INDEX IF NOT EXISTS idx_incidents_external_id
+                ON incidents(external_id);
         """)
         # Migrations for existing DBs
         try:
@@ -312,15 +316,23 @@ def get_uptime_percentage(service_name, days=90):
 
 
 def _attach_updates(db, incidents):
-    """Decorate incident rows with their updates."""
+    """Decorate incident rows with their updates (single batched query)."""
+    if not incidents:
+        return []
+    ids = [inc["id"] for inc in incidents]
+    placeholders = ",".join("?" for _ in ids)
+    all_updates = db.execute(
+        f"SELECT * FROM incident_updates WHERE incident_id IN ({placeholders}) "
+        "ORDER BY created_at DESC, id DESC",
+        ids,
+    ).fetchall()
+    updates_by_id = {}
+    for u in all_updates:
+        updates_by_id.setdefault(u["incident_id"], []).append(dict(u))
     result = []
     for inc in incidents:
         inc_dict = dict(inc)
-        updates = db.execute(
-            "SELECT * FROM incident_updates WHERE incident_id = ? ORDER BY created_at DESC, id DESC",
-            (inc["id"],),
-        ).fetchall()
-        inc_dict["updates"] = [dict(u) for u in updates]
+        inc_dict["updates"] = updates_by_id.get(inc["id"], [])
         result.append(inc_dict)
     return result
 

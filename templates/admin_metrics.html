@@ -132,7 +132,7 @@
             <div class="admin-nav">
                 <a href="{{ url_for('admin_panel') }}">Admin</a>
                 <a href="{{ url_for('index') }}">Status Page</a>
-                <a href="{{ url_for('admin_logout') }}">Logout</a>
+                <form method="POST" action="{{ url_for('admin_logout') }}" style="display:inline"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><button type="submit" class="admin-nav-logout">Logout</button></form>
                 {% include '_theme_toggle.html' %}
             </div>
         </div>

@@ -5,7 +5,7 @@ import os
 import secrets
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from functools import wraps
 
 import yaml
@@ -18,7 +18,6 @@ from flask import (
     redirect,
     url_for,
     session,
-    flash,
 )
 
 from status_page.checker import check_dns_bar, run_check
@@ -34,6 +33,8 @@ from status_page.scheduler_jobs import (
     create_scheduler,
     get_scheduler_health,
     mark_scheduler_disabled,
+    run_dns_bar_check as scheduler_run_dns_bar_check,
+    run_service_check as scheduler_run_service_check,
 )
 from status_page.status_view import (
     build_coverage_map,
@@ -62,6 +63,9 @@ from status_page.database import (
     record_check,
     update_incident,
 )
+from status_page.routes.admin import admin_bp
+from status_page.routes.api import api_bp
+from status_page.routes.public import public_bp
 
 # Number of consecutive failures before auto-creating an incident
 INCIDENT_THRESHOLD = 3
@@ -168,7 +172,7 @@ def login_required(f):
         if not session.get("admin"):
             if request.path.startswith("/api/"):
                 return jsonify({"error": "Authentication required"}), 401
-            return redirect(url_for("admin_login"))
+            return redirect(url_for("admin.login"))
         return f(*args, **kwargs)
 
     return decorated
@@ -230,6 +234,22 @@ GROUPS = CONFIG.get("groups") or []
 DNS_BAR = CONFIG.get("dns_bar", None)
 PAGE = CONFIG.get("page") or {}
 STATUS_FEEDS = CONFIG.get("status_feeds") or []
+_scheduler_lock = threading.Lock()
+_scheduler = None
+
+# Expose selected symbols for route modules that import status_page.app.
+_ROUTE_EXPORTS = (
+    poll_status_feed,
+    send_test_email,
+    create_incident,
+    update_incident,
+    get_db,
+    get_feed_incident_stats,
+    get_feed_backfill_capability,
+    get_scheduler_health,
+    build_feed_coverage,
+    snapshot,
+)
 
 
 def all_services():
@@ -251,115 +271,65 @@ def _filter_incidents_for_service(incidents_list, service_name):
 
 
 def run_service_check(service):
-    """Backward-compatible wrapper; scheduler uses extracted module jobs."""
-    status, response_time_ms, error = run_check(service)
-    if status == "skip":
-        logger.info("%s: skipped (%s)", service["name"], error or "no reason")
-        incr("checks.skipped")
-        return
-    record_check(service["name"], status, response_time_ms, error)
-    incr("checks.total")
-    incr(f"checks.status.{status}")
-    level = logging.DEBUG if status == "up" else logging.WARNING
-    logger.log(
-        level,
-        "%s: %s (%.0fms)" if response_time_ms else "%s: %s%s",
-        service["name"],
-        status,
-        response_time_ms or "",
+    """Backward-compatible wrapper around scheduler job implementation."""
+    result = scheduler_run_service_check(
+        service=service,
+        logger=logger,
+        incident_threshold=INCIDENT_THRESHOLD,
+        run_check_fn=run_check,
+        record_check_fn=record_check,
+        incr_fn=incr,
+        get_active_incident_for_service_fn=get_active_incident_for_service,
+        get_recent_checks_fn=get_recent_checks,
+        declare_incident_fn=declare_incident_with_alerts,
+        resolve_incident_fn=resolve_incident_with_alerts,
     )
-
-    name = service["name"]
-    active = get_active_incident_for_service(name)
-    if status != "up":
-        recent = get_recent_checks(name, limit=INCIDENT_THRESHOLD + 1)
-        interval = service.get("interval", 60)
-        if len(recent) >= 2:
-            prev_time = datetime.fromisoformat(
-                recent[1]["checked_at"].replace("Z", "+00:00")
-            )
-            gap = (datetime.now(timezone.utc) - prev_time).total_seconds()
-            if gap > interval * 3:
-                logger.info(
-                    "Skipping incident check for %s: stale gap of %.0fs", name, gap
-                )
-                return
-        consecutive_failures = all(
-            r["status"] != "up" for r in recent[:INCIDENT_THRESHOLD]
-        )
-        if consecutive_failures and len(recent) >= INCIDENT_THRESHOLD and not active:
-            error_msg = error or "Service unavailable"
-            declare_incident_with_alerts(
-                title=error_msg,
-                impact="minor",
-                message=f"Automated detection: {error_msg}",
-                service_name=name,
-            )
-            logger.warning("Auto-created incident for %s: %s", name, error_msg)
-    elif active:
-        resolved = resolve_incident_with_alerts(
-            incident_id=active["id"],
-            message="Service has recovered. Automatically resolved.",
-        )
-        if resolved:
-            logger.info("Auto-resolved incident #%d for %s", active["id"], name)
+    _invalidate_index_cache("service_check")
+    return result
 
 
 def run_dns_bar_check():
-    """Backward-compatible wrapper; scheduler uses extracted module jobs."""
-    if not DNS_BAR:
-        return
-    start = time.monotonic()
-    results = check_dns_bar(DNS_BAR.get("targets", []))
-    active_results = [r for r in results if r["status"] != "skip"]
-    skipped = len(results) - len(active_results)
-    if not active_results:
-        logger.info("DNS bar check skipped: all targets gated by env")
-        incr("checks.skipped")
-        return
-    elapsed_ms = (time.monotonic() - start) * 1000
-    total = len(active_results)
-    failed = [r for r in active_results if r["status"] != "up"]
-    failed_count = len(failed)
-    name = DNS_BAR.get("name", "DNS Resolution")
-    if failed_count == 0:
-        msg = None if skipped == 0 else f"{skipped} target(s) skipped by env gating"
-        record_check(name, "up", elapsed_ms, msg)
-        incr("checks.total")
-        incr("checks.status.up")
-        active = get_active_incident_for_service(name)
-        if active:
-            resolved = resolve_incident_with_alerts(
-                incident_id=active["id"],
-                message="All DNS targets resolving normally. Automatically resolved.",
-            )
-            if resolved:
-                logger.info("Auto-resolved DNS incident #%d", active["id"])
-    else:
-        failed_labels = ", ".join(r["label"] for r in failed)
-        error_msg = f"{failed_count}/{total} failed: {failed_labels}"
-        if skipped:
-            error_msg += f" ({skipped} skipped)"
-        record_check(name, "down", elapsed_ms, error_msg)
-        incr("checks.total")
-        incr("checks.status.down")
-        recent = get_recent_checks(name, limit=INCIDENT_THRESHOLD)
-        if (
-            len(recent) >= INCIDENT_THRESHOLD
-            and all(r["status"] != "up" for r in recent)
-            and not get_active_incident_for_service(name)
-        ):
-            declare_incident_with_alerts(
-                title="DNS Resolution Failures Detected",
-                impact="partial",
-                message=f"Automated detection: {error_msg}",
-                service_name=name,
-            )
-            logger.warning("Auto-created DNS incident: %s", error_msg)
+    """Backward-compatible wrapper around scheduler job implementation."""
+    result = scheduler_run_dns_bar_check(
+        dns_bar=DNS_BAR,
+        logger=logger,
+        incident_threshold=INCIDENT_THRESHOLD,
+        check_dns_bar_fn=check_dns_bar,
+        record_check_fn=record_check,
+        incr_fn=incr,
+        get_active_incident_for_service_fn=get_active_incident_for_service,
+        get_recent_checks_fn=get_recent_checks,
+        declare_incident_fn=declare_incident_with_alerts,
+        resolve_incident_fn=resolve_incident_with_alerts,
+    )
+    _invalidate_index_cache("dns_bar_check")
+    return result
 
 
-@app.route("/")
-def index():
+_index_cache_lock = threading.Lock()
+_index_cache = {"expires_at": 0.0, "html": None}
+
+
+def _index_cache_ttl_seconds():
+    raw = os.environ.get("INDEX_CACHE_TTL_SECONDS", "15")
+    try:
+        ttl = int(raw)
+    except (TypeError, ValueError):
+        ttl = 15
+    return max(0, ttl)
+
+
+def _cache_enabled():
+    return not app.config.get("TESTING") and _index_cache_ttl_seconds() > 0
+
+
+def _invalidate_index_cache(_reason=None):
+    with _index_cache_lock:
+        _index_cache["expires_at"] = 0.0
+        _index_cache["html"] = None
+
+
+def _render_index_uncached():
     all_svc_names = [s["name"] for s in all_services()]
     latest = get_latest_status(all_svc_names)
     all_incidents_by_day = get_incidents_by_day()
@@ -418,6 +388,20 @@ def index():
     )
 
 
+def _render_index_cached():
+    if not _cache_enabled():
+        return _render_index_uncached()
+    now = time.time()
+    with _index_cache_lock:
+        if _index_cache["html"] is not None and now < _index_cache["expires_at"]:
+            return _index_cache["html"]
+    html = _render_index_uncached()
+    with _index_cache_lock:
+        _index_cache["html"] = html
+        _index_cache["expires_at"] = now + _index_cache_ttl_seconds()
+    return html
+
+
 # --- API for managing incidents ---
 
 
@@ -430,299 +414,56 @@ def _check_api_csrf():
     return True
 
 
-@app.route("/api/incidents", methods=["POST"])
-@login_required
-def api_create_incident():
-    if not _check_api_csrf():
-        return jsonify({"error": "Missing or invalid CSRF token"}), 403
-    data = request.json
-    if not data or "title" not in data:
-        return jsonify({"error": "Missing required field: title"}), 400
-    impact = data.get("impact", "minor")
-    if impact not in {"major", "partial", "minor"}:
-        return jsonify(
-            {"error": "Invalid impact. Must be one of: major, minor, partial"}
-        ), 400
-    incident_id = create_incident(
-        title=data["title"][:255],
-        impact=impact,
-        message=data.get("message", "Investigating the issue.")[:2000],
-        service_name=data.get("service_name"),
-    )
-    return jsonify({"id": incident_id}), 201
+def _apply_loaded_config(new_config):
+    global CONFIG, SERVICES, GROUPS, DNS_BAR, PAGE, STATUS_FEEDS
+    CONFIG = new_config
+    SERVICES = CONFIG.get("services") or []
+    GROUPS = CONFIG.get("groups") or []
+    DNS_BAR = CONFIG.get("dns_bar", None)
+    PAGE = CONFIG.get("page") or {}
+    STATUS_FEEDS = CONFIG.get("status_feeds") or []
 
 
-@app.route("/api/incidents/<int:incident_id>", methods=["PATCH"])
-@login_required
-def api_update_incident(incident_id):
-    if not _check_api_csrf():
-        return jsonify({"error": "Missing or invalid CSRF token"}), 403
-    data = request.json
-    if not data or "status" not in data or "message" not in data:
-        return jsonify({"error": "Missing required fields: status, message"}), 400
-    if data["status"] not in _VALID_STATUSES:
-        return jsonify(
-            {
-                "error": f"Invalid status. Must be one of: {', '.join(sorted(_VALID_STATUSES))}"
-            }
-        ), 400
-    updated = update_incident(
-        incident_id, status=data["status"], message=data["message"][:2000]
-    )
-    if not updated:
-        return jsonify({"error": "Incident not found"}), 404
-    return jsonify({"ok": True})
-
-
-@app.route("/api/health")
-def api_health():
-    service_names = [s["name"] for s in all_services()]
-    latest = get_latest_status(service_names)
-    return jsonify(
-        {
-            name: {
-                "status": info["status"],
-                "response_time_ms": info["response_time_ms"],
-            }
-            if info
-            else {"status": "unknown"}
-            for name, info in latest.items()
-        }
-    )
-
-
-@app.route("/api/health/scheduler")
-def api_scheduler_health():
-    health = get_scheduler_health()
-    code = 200 if health["status"] in {"healthy", "disabled"} else 503
-    return jsonify(health), code
-
-
-@app.route("/api/metrics")
-@login_required
-def api_metrics():
-    return jsonify(snapshot())
-
-
-# --- Admin panel ---
-
-
-@app.route("/admin/login", methods=["GET", "POST"])
-def admin_login():
-    if request.method == "POST":
-        if not _check_csrf_token():
-            flash("Invalid form submission. Please try again.")
-            return render_template("admin_login.html")
-
-        ip = request.remote_addr or "unknown"
-        now = time.monotonic()
-
-        with _login_lock:
-            # Prune old attempts and check rate limit
-            attempts = [
-                t
-                for t in _login_failures.get(ip, [])
-                if now - t < _LOGIN_WINDOW_SECONDS
-            ]
-            if attempts:
-                _login_failures[ip] = attempts
-            else:
-                _login_failures.pop(ip, None)
-            if len(_login_failures.get(ip, [])) >= _LOGIN_MAX_ATTEMPTS:
-                flash("Too many login attempts. Please try again later.")
-                return render_template("admin_login.html"), 429
-
-        user_ok = hmac.compare_digest(request.form.get("username", ""), ADMIN_USER)
-        pass_ok = hmac.compare_digest(request.form.get("password", ""), ADMIN_PASS)
-        if user_ok and pass_ok:
-            with _login_lock:
-                _login_failures.pop(ip, None)
-            session["admin"] = True
-            return redirect(url_for("admin_panel"))
-        with _login_lock:
-            _login_failures.setdefault(ip, []).append(now)
-            # Bound memory growth between scheduled prune cycles.
-            if len(_login_failures) > 10000:
-                by_age = sorted(_login_failures.items(), key=lambda kv: max(kv[1]))
-                for old_ip, _ in by_age[: len(_login_failures) - 10000]:
-                    del _login_failures[old_ip]
-        flash("Invalid credentials")
-    return render_template("admin_login.html")
-
-
-@app.route("/admin/logout", methods=["POST"])
-def admin_logout():
-    if not _check_csrf_token():
-        flash("Invalid form submission. Please try again.")
-        return redirect(url_for("admin_panel"))
-    session.pop("admin", None)
-    return redirect(url_for("index"))
-
-
-@app.route("/admin")
-@login_required
-def admin_panel():
-    active = get_active_incidents()
-    recent = get_recent_incidents(limit=20)
-    svc_names = [s["name"] for s in all_services()]
-    integrations = {
-        "SLACK_WEBHOOK_URL": os.environ.get("SLACK_WEBHOOK_URL"),
-        "TEAMS_WEBHOOK_URL": os.environ.get("TEAMS_WEBHOOK_URL"),
-        "JIRA_URL": os.environ.get("JIRA_URL"),
-        "ALERT_EMAIL_TO": os.environ.get("ALERT_EMAIL_TO"),
-        "ALERT_EMAIL_TO_MASKED": _mask_email_list(os.environ.get("ALERT_EMAIL_TO")),
-        "SMTP_HOST": os.environ.get("SMTP_HOST"),
-        "RESEND_API_KEY": bool(os.environ.get("RESEND_API_KEY")),
-        "RESEND_FROM": os.environ.get("RESEND_FROM"),
-    }
-
-    return render_template(
-        "admin.html",
-        active_incidents=active,
-        recent_incidents=recent,
-        services=svc_names,
-        config=integrations,
-        feed_coverage=build_feed_coverage(STATUS_FEEDS),
-    )
-
-
-@app.route("/admin/declare", methods=["POST"])
-@login_required
-def admin_declare_incident():
-    if not _check_csrf_token():
-        flash("Invalid form submission. Please try again.")
-        return redirect(url_for("admin_panel"))
-    title = request.form.get("title", "").strip()[:255]
-    if not title:
-        flash("Incident title is required.")
-        return redirect(url_for("admin_panel"))
-    impact = request.form.get("impact", "partial")
-    if impact not in ("major", "partial", "minor"):
-        impact = "partial"
-    message = request.form.get("message", "Investigating the issue.").strip()[:2000]
-    service = request.form.get("service") or None
-
-    declare_incident_with_alerts(
-        title=title, impact=impact, message=message, service_name=service
-    )
-
-    flash(f"Incident declared: {title}")
-    return redirect(url_for("admin_panel"))
-
-
-@app.route("/admin/update/<int:incident_id>", methods=["POST"])
-@login_required
-def admin_update_incident(incident_id):
-    if not _check_csrf_token():
-        flash("Invalid form submission. Please try again.")
-        return redirect(url_for("admin_panel"))
-    status = request.form["status"]
-    message = request.form["message"][:2000]
-    if status not in _VALID_STATUSES:
-        flash("Invalid status value.")
-        return redirect(url_for("admin_panel"))
-    if status == "resolved":
-        resolved = resolve_incident_with_alerts(
-            incident_id=incident_id, message=message
+def _restart_scheduler():
+    global _scheduler
+    if os.environ.get("DISABLE_SCHEDULER"):
+        mark_scheduler_disabled()
+        _scheduler = None
+        return
+    with _scheduler_lock:
+        old = _scheduler
+        if old is not None:
+            old.shutdown()
+        _scheduler = create_scheduler(
+            app=app,
+            services=all_services(),
+            dns_bar=DNS_BAR,
+            status_feeds=STATUS_FEEDS,
+            prune_login_failures=_prune_login_failures,
+            logger=logger,
+            incident_threshold=INCIDENT_THRESHOLD,
         )
-        if not resolved:
-            flash("Incident not found.")
-            return redirect(url_for("admin_panel"))
-    else:
-        updated = update_incident(incident_id, status=status, message=message)
-        if not updated:
-            flash("Incident not found.")
-            return redirect(url_for("admin_panel"))
-
-    flash(f"Incident updated to: {status}")
-    return redirect(url_for("admin_panel"))
 
 
-@app.route("/admin/backfill", methods=["POST"])
-@login_required
-def admin_backfill():
-    """Trigger a manual backfill of real incident data from all configured status feeds."""
-    if not _check_csrf_token():
-        flash("Invalid form submission. Please try again.")
-        return redirect(url_for("admin_panel"))
-    # Count incidents before the backfill
-    with get_db() as db:
-        before_count = db.execute(
-            "SELECT COUNT(*) FROM incidents WHERE external_id IS NOT NULL"
-        ).fetchone()[0]
-
-    failed_feeds = []
-    succeeded_feeds = 0
-    for feed in STATUS_FEEDS:
-        try:
-            poll_status_feed(feed)
-            succeeded_feeds += 1
-            incr("backfill.feed.success")
-        except Exception as e:
-            logger.error("Backfill failed for feed %s: %s", feed.get("name"), e)
-            failed_feeds.append(feed.get("name", "unknown"))
-            incr("backfill.feed.error")
-
-    # Count incidents after the backfill
-    with get_db() as db:
-        after_count = db.execute(
-            "SELECT COUNT(*) FROM incidents WHERE external_id IS NOT NULL"
-        ).fetchone()[0]
-
-    imported = after_count - before_count
-    if failed_feeds:
-        flash(
-            "Backfill partially completed: "
-            f"{imported} new incident(s), {succeeded_feeds}/{len(STATUS_FEEDS)} feed(s) succeeded. "
-            f"Failed feed(s): {', '.join(failed_feeds)}."
-        )
-    else:
-        flash(
-            f"Backfill complete: {imported} new incident(s) imported from {len(STATUS_FEEDS)} feed(s)."
-        )
-    return redirect(url_for("admin_panel"))
+def reload_runtime_config():
+    try:
+        loaded = load_config()
+    except Exception as e:
+        logger.error("Config reload failed: %s", e)
+        return False, "Config reload failed. Check logs for details."
+    _apply_loaded_config(loaded)
+    _invalidate_index_cache("config_reload")
+    try:
+        _restart_scheduler()
+    except Exception as e:
+        logger.error("Scheduler restart failed after config reload: %s", e)
+        return False, "Config loaded but scheduler restart failed. Check logs."
+    return True, "Config reloaded successfully."
 
 
-@app.route("/admin/test-email", methods=["POST"])
-@login_required
-def admin_test_email():
-    if not _check_csrf_token():
-        flash("Invalid form submission. Please try again.")
-        return redirect(url_for("admin_panel"))
-    sent = send_test_email()
-    if sent:
-        flash("Test email sent.")
-    else:
-        flash("Test email failed. Check email configuration and logs.")
-    return redirect(url_for("admin_panel"))
-
-
-@app.route("/admin/feed-coverage")
-@login_required
-def admin_feed_coverage():
-    """Return JSON showing feed coverage: incident count and date range per feed."""
-    coverage = []
-    for feed in STATUS_FEEDS:
-        svc_names = set()
-        svc_names.update(feed.get("components", {}).values())
-        svc_names.update(feed.get("covered_services", []))
-        stats = get_feed_incident_stats(svc_names)
-        capability = get_feed_backfill_capability(feed)
-        coverage.append(
-            {
-                "feed": feed.get("name"),
-                "feed_type": capability["feed_type"],
-                "ingestion": capability["ingestion"],
-                "known_limit_days": capability["known_limit_days"],
-                "cap_type": capability["cap_type"],
-                "cap_summary": capability["cap_summary"],
-                "services": sorted(svc_names),
-                "incident_count": stats["cnt"],
-                "oldest": stats["oldest"],
-                "newest": stats["newest"],
-            }
-        )
-    return jsonify(coverage)
+app.register_blueprint(public_bp)
+app.register_blueprint(api_bp)
+app.register_blueprint(admin_bp)
 
 
 def _startup():
@@ -780,15 +521,8 @@ def _startup():
             "Startup: %d service-days with no check data (shown as no-data)", gap_days
         )
 
-    return create_scheduler(
-        app=app,
-        services=all_services(),
-        dns_bar=DNS_BAR,
-        status_feeds=STATUS_FEEDS,
-        prune_login_failures=_prune_login_failures,
-        logger=logger,
-        incident_threshold=INCIDENT_THRESHOLD,
-    )
+    _restart_scheduler()
+    return _scheduler
 
 
 # Run startup when the module loads (works with both `flask run` and `python app.py`)

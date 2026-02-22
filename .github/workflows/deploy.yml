@@ -36,3 +36,17 @@ jobs:
         run: |
           ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             "cd '${{ secrets.DEPLOY_PATH }}' && sudo systemctl restart status-page && sudo systemctl is-active status-page"
+
+      - name: Verify scheduler health
+        run: |
+          for i in 1 2 3 4 5; do
+            code=$(curl -s -o /tmp/scheduler-health.json -w "%{http_code}" "http://${{ secrets.DEPLOY_HOST }}/api/health/scheduler")
+            if [ "$code" = "200" ]; then
+              cat /tmp/scheduler-health.json
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Scheduler health check failed:"
+          cat /tmp/scheduler-health.json || true
+          exit 1

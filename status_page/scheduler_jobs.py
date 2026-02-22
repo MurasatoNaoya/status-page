@@ -87,17 +87,29 @@ def get_scheduler_health():
     return snap
 
 
-def run_service_check(service, logger, incident_threshold=3):
-    status, response_time_ms, error = run_check(service)
+def run_service_check(
+    service,
+    logger,
+    incident_threshold=3,
+    run_check_fn=run_check,
+    record_check_fn=record_check,
+    incr_fn=incr,
+    observe_fn=observe,
+    get_active_incident_for_service_fn=get_active_incident_for_service,
+    get_recent_checks_fn=get_recent_checks,
+    declare_incident_fn=declare_incident_with_alerts,
+    resolve_incident_fn=resolve_incident_with_alerts,
+):
+    status, response_time_ms, error = run_check_fn(service)
     if status == "skip":
         logger.info("%s: skipped (%s)", service["name"], error or "no reason")
-        incr("checks.skipped")
+        incr_fn("checks.skipped")
         return
-    record_check(service["name"], status, response_time_ms, error)
-    incr("checks.total")
-    incr(f"checks.status.{status}")
+    record_check_fn(service["name"], status, response_time_ms, error)
+    incr_fn("checks.total")
+    incr_fn(f"checks.status.{status}")
     if response_time_ms is not None:
-        observe("checks.response_time_ms", response_time_ms)
+        observe_fn("checks.response_time_ms", response_time_ms)
     level = "debug" if status == "up" else "warning"
     getattr(logger, level)(
         "%s: %s (%.0fms)" if response_time_ms else "%s: %s%s",
@@ -107,10 +119,10 @@ def run_service_check(service, logger, incident_threshold=3):
     )
 
     name = service["name"]
-    active = get_active_incident_for_service(name)
+    active = get_active_incident_for_service_fn(name)
 
     if status != "up":
-        recent = get_recent_checks(name, limit=incident_threshold + 1)
+        recent = get_recent_checks_fn(name, limit=incident_threshold + 1)
         interval = service.get("interval", 60)
         if len(recent) >= 2:
             prev_time = datetime.fromisoformat(
@@ -128,7 +140,7 @@ def run_service_check(service, logger, incident_threshold=3):
 
         if consecutive_failures and len(recent) >= incident_threshold and not active:
             error_msg = error or "Service unavailable"
-            declare_incident_with_alerts(
+            declare_incident_fn(
                 title=error_msg,
                 impact="minor",
                 message=f"Automated detection: {error_msg}",
@@ -137,7 +149,7 @@ def run_service_check(service, logger, incident_threshold=3):
             logger.warning("Auto-created incident for %s: %s", name, error_msg)
     else:
         if active:
-            resolved = resolve_incident_with_alerts(
+            resolved = resolve_incident_fn(
                 incident_id=active["id"],
                 message="Service has recovered. Automatically resolved.",
             )
@@ -145,16 +157,28 @@ def run_service_check(service, logger, incident_threshold=3):
                 logger.info("Auto-resolved incident #%d for %s", active["id"], name)
 
 
-def run_dns_bar_check(dns_bar, logger, incident_threshold=3):
+def run_dns_bar_check(
+    dns_bar,
+    logger,
+    incident_threshold=3,
+    check_dns_bar_fn=check_dns_bar,
+    record_check_fn=record_check,
+    incr_fn=incr,
+    observe_fn=observe,
+    get_active_incident_for_service_fn=get_active_incident_for_service,
+    get_recent_checks_fn=get_recent_checks,
+    declare_incident_fn=declare_incident_with_alerts,
+    resolve_incident_fn=resolve_incident_with_alerts,
+):
     if not dns_bar:
         return
     start = time.monotonic()
-    results = check_dns_bar(dns_bar.get("targets", []))
+    results = check_dns_bar_fn(dns_bar.get("targets", []))
     active_results = [r for r in results if r["status"] != "skip"]
     skipped = len(results) - len(active_results)
     if not active_results:
         logger.info("DNS bar check skipped: all targets gated by env")
-        incr("checks.skipped")
+        incr_fn("checks.skipped")
         return
     elapsed_ms = (time.monotonic() - start) * 1000
 
@@ -165,13 +189,13 @@ def run_dns_bar_check(dns_bar, logger, incident_threshold=3):
     name = dns_bar.get("name", "DNS Resolution")
     if failed_count == 0:
         msg = None if skipped == 0 else f"{skipped} target(s) skipped by env gating"
-        record_check(name, "up", elapsed_ms, msg)
-        incr("checks.total")
-        incr("checks.status.up")
-        observe("checks.response_time_ms", elapsed_ms)
-        active = get_active_incident_for_service(name)
+        record_check_fn(name, "up", elapsed_ms, msg)
+        incr_fn("checks.total")
+        incr_fn("checks.status.up")
+        observe_fn("checks.response_time_ms", elapsed_ms)
+        active = get_active_incident_for_service_fn(name)
         if active:
-            resolved = resolve_incident_with_alerts(
+            resolved = resolve_incident_fn(
                 incident_id=active["id"],
                 message="All DNS targets resolving normally. Automatically resolved.",
             )
@@ -182,17 +206,17 @@ def run_dns_bar_check(dns_bar, logger, incident_threshold=3):
         error_msg = f"{failed_count}/{total} failed: {failed_labels}"
         if skipped:
             error_msg += f" ({skipped} skipped)"
-        record_check(name, "down", elapsed_ms, error_msg)
-        incr("checks.total")
-        incr("checks.status.down")
-        observe("checks.response_time_ms", elapsed_ms)
-        recent = get_recent_checks(name, limit=incident_threshold)
+        record_check_fn(name, "down", elapsed_ms, error_msg)
+        incr_fn("checks.total")
+        incr_fn("checks.status.down")
+        observe_fn("checks.response_time_ms", elapsed_ms)
+        recent = get_recent_checks_fn(name, limit=incident_threshold)
         if (
             len(recent) >= incident_threshold
             and all(r["status"] != "up" for r in recent)
-            and not get_active_incident_for_service(name)
+            and not get_active_incident_for_service_fn(name)
         ):
-            declare_incident_with_alerts(
+            declare_incident_fn(
                 title="DNS Resolution Failures Detected",
                 impact="partial",
                 message=f"Automated detection: {error_msg}",

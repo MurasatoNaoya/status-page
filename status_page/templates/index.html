@@ -45,7 +45,7 @@
                     <h1><svg class="status-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="28" height="28"><path d="M32 6L4 20l28 14 28-14Z" fill="#E04343"/><path class="status-logo-warm-1" d="M4 26l28 14 28-14"/><path class="status-logo-warm-2" d="M4 36l28 14 28-14"/><path class="status-logo-accent" d="M4 46l28 14 28-14"/></svg>{{ page.get('title', 'Status') }}</h1>
                 </div>
                 <div class="header-actions">
-                    <a href="{{ url_for('admin_panel') }}" class="admin-link">Admin Panel</a>
+                    <a href="{{ url_for('admin.panel') }}" class="admin-link">Admin Panel</a>
                     {% include '_theme_toggle.html' %}
                 </div>
             </div>

@@ -497,7 +497,7 @@ class TestAdminBackfill:
         expect(admin_session.locator(".btn-backfill")).to_be_visible()
 
     def test_backfill_has_csrf_token(self, page, live_server, admin_session):
-        form = admin_session.locator(".backfill-section form")
+        form = admin_session.locator(".backfill-section form").first
         expect(form.locator('input[name="_csrf_token"]')).to_be_attached()
 
     def test_integrations_section_visible(self, page, live_server, admin_session):

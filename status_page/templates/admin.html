@@ -12,8 +12,8 @@
         <div class="admin-header">
             <h1>Admin Panel</h1>
             <div class="admin-nav">
-                <a href="{{ url_for('index') }}">View Status Page</a>
-                <form method="POST" action="{{ url_for('admin_logout') }}" style="display:inline"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><button type="submit" class="admin-nav-logout">Logout</button></form>
+                <a href="{{ url_for('public.index') }}">View Status Page</a>
+                <form method="POST" action="{{ url_for('admin.logout') }}" style="display:inline"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><button type="submit" class="admin-nav-logout">Logout</button></form>
                 {% include '_theme_toggle.html' %}
             </div>
         </div>
@@ -27,7 +27,7 @@
         <!-- Declare Incident -->
         <div class="declare-section">
             <h2>Declare Incident</h2>
-            <form method="POST" action="{{ url_for('admin_declare_incident') }}" data-confirm="This will alert the team and create a Jira ticket. Continue?">
+            <form method="POST" action="{{ url_for('admin.declare_incident') }}" data-confirm="This will alert the team and create a Jira ticket. Continue?">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                 <div class="form-row">
                     <div class="form-group">
@@ -80,7 +80,7 @@
                             Since {{ inc.created_at | gmt }}
                         </span>
                     </div>
-                    <form method="POST" action="{{ url_for('admin_update_incident', incident_id=inc.id) }}" class="mgmt-update-form">
+                    <form method="POST" action="{{ url_for('admin.update_incident', incident_id=inc.id) }}" class="mgmt-update-form">
                         <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                         <select name="status">
                             <option value="investigating">Investigating</option>
@@ -105,9 +105,13 @@
                 Pull real historical incident data from public status feeds (GitHub, Azure, Docker, Red Hat).
                 Only imports real incidents &mdash; does not create synthetic data. Existing data is preserved.
             </p>
-            <form method="POST" action="{{ url_for('admin_backfill') }}" data-confirm="This will import historical incidents from public status feeds. Existing data will not be affected. Continue?">
+            <form method="POST" action="{{ url_for('admin.backfill') }}" data-confirm="This will import historical incidents from public status feeds. Existing data will not be affected. Continue?">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn-backfill">Backfill from Public Feeds</button>
+            </form>
+            <form method="POST" action="{{ url_for('admin.reload_config') }}" style="display:inline;" data-confirm="Reload config.yaml and restart scheduler jobs?">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn-test-email">Reload Config</button>
             </form>
             {% if feed_coverage %}
             <div class="backfill-coverage">
@@ -171,7 +175,7 @@
             {% if email %}
             <div class="integration-row" style="border-bottom:none; padding-top:2px;">
                 <span class="integration-detail">Notifies on manual incidents, active public-feed incidents, and resolutions. Historical backfill does not send alerts.</span>
-                <form method="POST" action="{{ url_for('admin_test_email') }}" style="margin:0;">
+                <form method="POST" action="{{ url_for('admin.test_email') }}" style="margin:0;">
                     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn-test-email">Send Test Email</button>
                 </form>
@@ -184,7 +188,7 @@
         </div>
 
         <footer>
-            <a href="{{ url_for('index') }}" style="color: var(--text-secondary); text-decoration: none; font-size: 12px;">
+            <a href="{{ url_for('public.index') }}" style="color: var(--text-secondary); text-decoration: none; font-size: 12px;">
                 &larr; Back to Status Page
             </a>
         </footer>

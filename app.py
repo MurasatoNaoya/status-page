@@ -1114,7 +1114,9 @@ def _startup():
         if orphan_result:
             logger.info("Startup cleanup: removed %d orphan rows", orphan_result)
     else:
-        logger.info("Startup cleanup: skipped orphan cleanup (set CLEANUP_ORPHANS_ON_STARTUP=1 to enable)")
+        logger.info(
+            "Startup cleanup: skipped orphan cleanup (set CLEANUP_ORPHANS_ON_STARTUP=1 to enable)"
+        )
     gap_days = backfill_check_gaps(valid_names)
     if gap_days:
         logger.info(

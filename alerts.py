@@ -173,7 +173,7 @@ def _resolve_jira_ticket(incident_id, message, jira_key=None):
         issue_key = jira_key
         if not issue_key:
             label_jql = (
-                f'project = {project} '
+                f"project = {project} "
                 f'AND labels = "status-page-incident" '
                 f'AND labels = "incident-{incident_id}" '
                 "ORDER BY created DESC"

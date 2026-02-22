@@ -33,7 +33,11 @@ def test_validate_config_rejects_http_service_without_url():
 def test_validate_config_rejects_bad_tcp_port():
     with pytest.raises(ValueError):
         validate_config(
-            {"services": [{"name": "Redis", "type": "tcp", "host": "localhost", "port": 70000}]}
+            {
+                "services": [
+                    {"name": "Redis", "type": "tcp", "host": "localhost", "port": 70000}
+                ]
+            }
         )
 
 

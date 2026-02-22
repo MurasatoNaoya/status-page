@@ -240,5 +240,5 @@ class TestSendResolution:
         assert mock_get.call_count == 3
         first_jql = mock_get.call_args_list[0].kwargs["params"]["jql"]
         second_jql = mock_get.call_args_list[1].kwargs["params"]["jql"]
-        assert "labels = \"status-page-incident\"" in first_jql
+        assert 'labels = "status-page-incident"' in first_jql
         assert "description" in second_jql

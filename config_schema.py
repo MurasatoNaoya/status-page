@@ -97,7 +97,9 @@ def _validate_status_feed(feed, field):
     ftype = item.get("type", "statuspage")
     _require_str(ftype, f"{field}.type")
     if ftype not in _FEED_TYPES:
-        raise ValueError(f"{field}.type must be one of: {', '.join(sorted(_FEED_TYPES))}")
+        raise ValueError(
+            f"{field}.type must be one of: {', '.join(sorted(_FEED_TYPES))}"
+        )
     if ftype != "azure_service_health":
         _require_url_http(item.get("url"), f"{field}.url")
     if "history_url" in item:

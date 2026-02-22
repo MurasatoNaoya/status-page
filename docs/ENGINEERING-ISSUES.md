@@ -2,93 +2,73 @@
 
 This file tracks structural/code-quality issues identified during review, with recommended actions.
 
-## Important Issues
+## Completed
 
-### 1) `status_page/app.py` is too large (~1200+ lines)
+### 1) `status_page/app.py` split — DONE
 
-Risk:
-- Mixed concerns (routing, scheduler wiring, service data building, security glue) increase regression risk.
+Refactored from ~1200 lines to ~570 lines. Extracted:
+- `status_page/scheduler_jobs.py` (scheduler setup + job functions)
+- `status_page/status_view.py` (service/group data-building helpers)
+- `status_page/routes/admin.py`, `api.py`, `public.py` (Flask blueprints)
+- `status_page/runtime.py` (shared context provider for blueprints)
 
-Recommended split:
-1. `status_page/web_routes.py` (Flask route handlers)
-2. `status_page/scheduler_jobs.py` (scheduler setup + job functions)
-3. `status_page/presentation.py` (service/group data-building helpers)
+### 2) Scheduler liveness health signal — DONE
 
-Target:
-- Keep `status_page/app.py` as composition/bootstrap only.
+Added `/api/health/scheduler` endpoint with per-job heartbeat tracking, staleness detection (`max_interval * 3`), and 503 response when stale. Deploy workflow verifies scheduler health after restart.
 
-### 2) No scheduler liveness health signal
+### 3) CI/CD pipeline — DONE
 
-Risk:
-- Scheduler can die while web process remains up, leading to stale data with no immediate alert.
+Added `.github/workflows/deploy.yml` with rsync code sync, systemd restart, and HTTPS scheduler health verification with retry loop.
 
-Recommended action:
-1. Track per-job heartbeat timestamps.
-2. Add `/api/health/scheduler` (or extend `/api/health`) with:
-   - scheduler running flag
-   - last check job run time
-   - stale threshold evaluation
-3. Alert if stale beyond threshold.
+### 4) Dev dependency separation — DONE
 
-### 3) CI/CD pipeline gap
+Created `requirements-dev.txt` (pytest, pytest-cov, pytest-playwright, ruff). Production `requirements.txt` contains only runtime dependencies. CI installs dev deps only in test jobs.
 
-Observation:
-- Test/lint workflows exist, but there is no deployment workflow.
+### 5) `tests/test_incident_service.py` coverage expanded — DONE
 
-Recommended action:
-1. Add explicit deploy workflow (manual dispatch + protected environment).
-2. Include:
-   - smoke check (`/api/health`)
-   - rollback guidance
-   - artifact/version annotation.
+Added tests for declare success/failure with/without Jira, resolve not-found path, resolve success path including alert dispatch args.
 
-### 4) Test dependencies are in production requirements
+### 6) Admin CSS extraction — DONE
 
-Risk:
-- Production install includes `pytest`/Playwright tooling unnecessarily.
+Moved ~250 lines of inline CSS from `admin.html` to `status_page/static/admin.css`.
+
+### 7) Slack resolution alerts — DONE
+
+Resolution alerts now use Block Kit format consistent with declaration payloads.
+
+## Remaining Issues
+
+### 8) `status_feeds.py` is the largest module (1,079 lines)
+
+Handles four feed types (statuspage, statusio, azure_rss, azure_service_health) plus two history page scrapers in a single file.
 
 Recommended action:
-1. Keep `requirements.txt` runtime-only.
-2. Add `requirements-dev.txt` for test/dev tools.
-3. Update CI to install dev deps only in test jobs.
+- Split into per-adapter modules under a `feeds/` directory (e.g., `feeds/statuspage.py`, `feeds/azure_rss.py`).
 
-### 5) `tests/test_incident_service.py` coverage is too thin
+### 9) `test_app.py` is 1,958 lines
 
-Risk:
-- Orchestration logic (DB + alerts + Jira key linking) can regress silently.
+Mixes route tests, rendering tests, and integration tests in one file.
 
 Recommended action:
-1. Add tests for:
-   - declare success/failure with/without Jira
-   - resolve not-found path
-   - resolve success path including alert dispatch args
-   - idempotency/retry behavior assumptions.
+- Split into `test_routes_admin.py`, `test_routes_api.py`, `test_routes_public.py`, and `test_index_rendering.py`.
 
-### 6) Inline CSS in `status_page/templates/admin.html` (~250 lines)
+### 10) Backward-compatible wrappers in `app.py`
 
-Risk:
-- Harder to maintain and test; style regressions become template regressions.
+Lines 234-279 contain 6 pass-through functions (`_incident_severity`, `_filter_incidents_for_service`, `run_service_check`, `run_dns_bar_check`) that exist solely for old import paths.
 
 Recommended action:
-1. Move inline admin CSS to `status_page/static/admin.css`.
-2. Keep template structure-only.
+- Audit callers and remove once all consumers use the extracted modules directly.
 
-### 7) Slack resolution alerts inconsistent with declaration format
+### 11) No database backup strategy
 
-Risk:
-- Inconsistent operator experience and lower readability.
+PROJECT.md mentions daily SQLite backup in Phase 6 but no implementation exists.
 
 Recommended action:
-1. Use Block Kit for resolution alerts too.
-2. Align fields with declaration payload:
-   - incident id/title/service/impact/status/update time.
+- Add a scheduler task or cron job for daily SQLite backups with rotation.
 
-## Suggested Execution Order
+### 12) No structured logging
 
-1. Split prod vs dev dependencies (`requirements-dev.txt`).
-2. Add scheduler liveness signal endpoint.
-3. Expand `incident_service` tests.
-4. Move admin inline CSS to static file.
-5. Standardize Slack resolution payload.
-6. Refactor `status_page/app.py` into modules.
-7. Add deploy workflow after refactor stabilizes.
+Application uses Python's basic `logging.basicConfig()` with `%s` formatting.
+
+Recommended action:
+- Switch to JSON structured logging for production to enable log aggregation and alerting.

@@ -21,8 +21,8 @@ jobs:
         run: |
           pip install -r requirements-dev.txt
 
-      - name: Run unit tests
-        run: pytest tests --ignore=tests/test_e2e.py -v
+      - name: Run unit tests with coverage
+        run: pytest tests --ignore=tests/test_e2e.py -v --cov=status_page --cov-report=term-missing --cov-fail-under=75
 
   e2e-tests:
     runs-on: ubuntu-latest

@@ -1757,3 +1757,76 @@ class TestPollStatusFeed:
         inc = database.get_incident_by_external_id("no-svc-123")
         assert inc is not None
         assert inc["service_name"] is None
+
+    def test_new_active_feed_incident_sends_alerts(self):
+        from status_page.feed_importer import poll_status_feed
+
+        feed_results = [
+            {
+                "external_id": "active-123",
+                "title": "Active outage",
+                "status": "investigating",
+                "impact": "major",
+                "services": ["Svc"],
+                "updates": [{"status": "investigating", "message": "Investigating"}],
+                "source": "TestFeed",
+            }
+        ]
+        with (
+            patch("status_page.feed_importer.poll_feed", return_value=feed_results),
+            patch("status_page.feed_importer.send_alerts", return_value=None) as mock_alerts,
+        ):
+            poll_status_feed({"name": "TestFeed"})
+
+        mock_alerts.assert_called_once()
+
+    def test_new_resolved_feed_incident_does_not_send_alerts(self):
+        from status_page.feed_importer import poll_status_feed
+
+        feed_results = [
+            {
+                "external_id": "resolved-123",
+                "title": "Old resolved outage",
+                "status": "resolved",
+                "impact": "minor",
+                "services": ["Svc"],
+                "updates": [{"status": "resolved", "message": "Resolved"}],
+                "source": "TestFeed",
+            }
+        ]
+        with (
+            patch("status_page.feed_importer.poll_feed", return_value=feed_results),
+            patch("status_page.feed_importer.send_alerts") as mock_alerts,
+        ):
+            poll_status_feed({"name": "TestFeed"})
+
+        mock_alerts.assert_not_called()
+
+    def test_existing_feed_incident_resolution_sends_resolution_alert(self):
+        from status_page.feed_importer import poll_status_feed
+
+        database.create_incident(
+            title="Open feed incident",
+            external_id="resolve-me-2:Svc",
+            service_name="Svc",
+            status="investigating",
+            jira_key="OPS-123",
+        )
+        feed_results = [
+            {
+                "external_id": "resolve-me-2",
+                "title": "Open feed incident",
+                "status": "resolved",
+                "impact": "minor",
+                "services": ["Svc"],
+                "updates": [],
+                "source": "TestFeed",
+            }
+        ]
+        with (
+            patch("status_page.feed_importer.poll_feed", return_value=feed_results),
+            patch("status_page.feed_importer.send_resolution") as mock_resolution,
+        ):
+            poll_status_feed({"name": "TestFeed"})
+
+        mock_resolution.assert_called_once()

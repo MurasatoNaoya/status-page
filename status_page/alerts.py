@@ -2,12 +2,19 @@
 
 Configure via environment variables:
   SLACK_WEBHOOK_URL   - Slack incoming webhook for #incidents channel
+  TEAMS_WEBHOOK_URL   - Microsoft Teams incoming webhook
   JIRA_URL            - e.g. https://yourcompany.atlassian.net
   JIRA_PROJECT        - e.g. OPS
   JIRA_USER           - e.g. you@company.com
   JIRA_TOKEN          - API token from https://id.atlassian.net/manage-profile/security/api-tokens
-  ALERT_EMAIL_TO      - comma-separated emails (requires SMTP config)
-  TEAMS_WEBHOOK_URL   - Microsoft Teams incoming webhook
+  ALERT_EMAIL_TO      - comma-separated recipient emails
+  SMTP_HOST           - SMTP server hostname (required for email alerts)
+  SMTP_PORT           - SMTP server port (default: 587)
+  SMTP_USER           - SMTP username (optional)
+  SMTP_PASS           - SMTP password (optional)
+  SMTP_FROM           - From address (default: SMTP_USER or status-page@localhost)
+  SMTP_STARTTLS       - Use STARTTLS on SMTP (default: true)
+  SMTP_SSL            - Use implicit SSL SMTP (default: false)
 """
 
 import logging
@@ -76,6 +83,7 @@ def _send_email_resolution(incident_id, message):
 def _send_email(subject, body):
     recipients_raw = os.environ.get("ALERT_EMAIL_TO", "")
     recipients = [r.strip() for r in recipients_raw.split(",") if r.strip()]
+    recipients = [r for r in recipients if "@" in r]
     smtp_host = os.environ.get("SMTP_HOST")
     if not smtp_host or not recipients:
         logger.debug(
@@ -83,7 +91,12 @@ def _send_email(subject, body):
         )
         return
 
-    smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+    raw_port = os.environ.get("SMTP_PORT", "587")
+    try:
+        smtp_port = int(raw_port)
+    except (TypeError, ValueError):
+        logger.warning("Invalid SMTP_PORT=%r; falling back to 587", raw_port)
+        smtp_port = 587
     smtp_user = os.environ.get("SMTP_USER")
     smtp_pass = os.environ.get("SMTP_PASS")
     smtp_from = os.environ.get("SMTP_FROM", smtp_user or "status-page@localhost")

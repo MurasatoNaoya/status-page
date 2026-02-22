@@ -263,7 +263,7 @@ class TestEmail:
         "os.environ",
         {
             "SMTP_HOST": "smtp.example.com",
-            "SMTP_PORT": "587",
+            "SMTP_PORT": "not-a-port",
             "SMTP_USER": "alerts@example.com",
             "SMTP_PASS": "secret",
             "SMTP_FROM": "alerts@example.com",
@@ -280,6 +280,7 @@ class TestEmail:
         server.starttls.assert_called_once()
         server.login.assert_called_once_with("alerts@example.com", "secret")
         server.send_message.assert_called_once()
+        mock_smtp.assert_called_once_with("smtp.example.com", 587, timeout=15)
 
     @patch.dict(
         "os.environ",
@@ -298,3 +299,26 @@ class TestEmail:
         alerts._send_email("Subject", "Body")
 
         server.send_message.assert_called_once()
+
+    @patch.dict(
+        "os.environ",
+        {
+            "SMTP_HOST": "smtp.example.com",
+            "ALERT_EMAIL_TO": "ops@example.com",
+        },
+    )
+    @patch("status_page.alerts.smtplib.SMTP", side_effect=Exception("Connection error"))
+    def test_email_handles_smtp_failure(self, mock_smtp):
+        alerts._send_email("Subject", "Body")
+
+    @patch.dict(
+        "os.environ",
+        {
+            "SMTP_HOST": "smtp.example.com",
+            "ALERT_EMAIL_TO": "not-an-email,still-bad",
+        },
+    )
+    @patch("status_page.alerts.smtplib.SMTP")
+    def test_email_skips_when_no_valid_recipients(self, mock_smtp):
+        alerts._send_email("Subject", "Body")
+        mock_smtp.assert_not_called()

@@ -272,10 +272,10 @@ class TestAdminOperations:
                 "get_feed_backfill_capability",
                 return_value={
                     "feed_type": "statuspage",
-                    "ingestion": "Statuspage API (/incidents.json)",
+                    "ingestion": "Statuspage API (/incidents.json, paginated)",
                     "known_limit_days": None,
                     "cap_type": "implementation_bounded",
-                    "cap_summary": "First incidents page only.",
+                    "cap_summary": "Walks up to 10 incidents page(s).",
                 },
             ),
         ):

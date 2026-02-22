@@ -31,7 +31,7 @@
 
     {% macro badge_label(status) -%}
         {%- if status == 'operational' -%}Operational
-        {%- elif status == 'degraded' or status == 'partial_outage' -%}Degraded
+        {%- elif status == 'degraded' or status == 'partial_outage' or status == 'under_maintenance' -%}Degraded
         {%- elif status == 'major_outage' -%}Outage
         {%- elif status == 'no_data' -%}No Data
         {%- else -%}{{ status }}

@@ -651,7 +651,7 @@ def _build_group_aggregate(group, latest, all_incidents_by_day, coverage=None):
         group_status = "no_data"
     elif "major_outage" in svc_statuses:
         group_status = "major_outage"
-    elif any(s in {"partial_outage", "degraded"} for s in svc_statuses):
+    elif any(s in {"partial_outage", "degraded", "under_maintenance"} for s in svc_statuses):
         group_status = "degraded"
     else:
         group_status = "operational"

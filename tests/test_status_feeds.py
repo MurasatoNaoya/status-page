@@ -223,6 +223,19 @@ class TestFeedBackfillCapability:
         assert profile["known_limit_days"] == 180
         assert profile["cap_summary"] == "Provider advertises 180-day history."
 
+    def test_statuspage_preserves_custom_cap_summary_override(self):
+        profile = get_feed_backfill_capability(
+            {
+                "name": "GitHub",
+                "type": "statuspage",
+                "max_incident_pages": 25,
+                "backfill_cap_summary": "Org policy: treat as 120-day source.",
+            }
+        )
+        assert profile["feed_type"] == "statuspage"
+        assert profile["max_incident_pages"] == 25
+        assert profile["cap_summary"] == "Org policy: treat as 120-day source."
+
     def test_matches_prefixed_subcomponents(self):
         """Components like 'Quay.io - API' should match config key 'Quay.io'."""
         feed = {

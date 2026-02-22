@@ -78,10 +78,11 @@ def get_feed_backfill_capability(feed_config):
         profile["cap_summary"] = str(feed_config.get("backfill_cap_summary"))
     if feed_type == "statuspage":
         profile["max_incident_pages"] = _statuspage_max_pages(feed_config)
-        profile["cap_summary"] = (
-            f"Walks up to {profile['max_incident_pages']} incidents page(s). "
-            "Range varies by provider/account and incident volume."
-        )
+        if "backfill_cap_summary" not in feed_config:
+            profile["cap_summary"] = (
+                f"Walks up to {profile['max_incident_pages']} incidents page(s). "
+                "Range varies by provider/account and incident volume."
+            )
     profile["feed_type"] = feed_type
     return profile
 

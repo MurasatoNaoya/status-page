@@ -366,3 +366,8 @@ class TestEmail:
     def test_email_skips_when_no_valid_recipients(self, mock_smtp):
         alerts._send_email("Subject", "Body")
         mock_smtp.assert_not_called()
+
+    @patch.object(alerts, "_send_email", return_value=True)
+    def test_send_test_email_returns_true(self, mock_send):
+        assert alerts.send_test_email() is True
+        mock_send.assert_called_once()

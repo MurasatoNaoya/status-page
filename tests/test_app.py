@@ -351,6 +351,42 @@ class TestAdminOperations:
         assert resp.status_code == 302
         assert mock_resolve.called
 
+    def test_admin_test_email_success(self, app_client):
+        import status_page.app as app_module
+
+        csrf_token = "test-csrf-token"
+        with app_client.session_transaction() as sess:
+            sess["admin"] = True
+            sess["_csrf_token"] = csrf_token
+
+        with patch.object(app_module, "send_test_email", return_value=True):
+            resp = app_client.post(
+                "/admin/test-email",
+                data={"_csrf_token": csrf_token},
+                follow_redirects=True,
+            )
+
+        assert resp.status_code == 200
+        assert b"Test email sent." in resp.data
+
+    def test_admin_test_email_failure(self, app_client):
+        import status_page.app as app_module
+
+        csrf_token = "test-csrf-token"
+        with app_client.session_transaction() as sess:
+            sess["admin"] = True
+            sess["_csrf_token"] = csrf_token
+
+        with patch.object(app_module, "send_test_email", return_value=False):
+            resp = app_client.post(
+                "/admin/test-email",
+                data={"_csrf_token": csrf_token},
+                follow_redirects=True,
+            )
+
+        assert resp.status_code == 200
+        assert b"Test email failed." in resp.data
+
 
 class TestGMTFilter:
     def test_format_gmt_filter(self, app_client):

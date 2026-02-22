@@ -158,6 +158,15 @@
             border-bottom: 1px solid var(--border);
         }
         .integration-row:last-child { border-bottom: none; }
+        .integration-detail {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+            margin-left: auto;
+            text-align: right;
+            max-width: 70%;
+            line-height: 1.4;
+        }
         .int-status {
             font-size: 11px;
             font-weight: 500;
@@ -201,6 +210,18 @@
         }
         .btn-backfill:hover { background: #0d47a1; }
         .btn-backfill:active { transform: scale(0.98); }
+        .btn-test-email {
+            padding: 6px 12px;
+            background: var(--text);
+            color: var(--bg);
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            font-family: inherit;
+            margin-left: 8px;
+        }
+        .btn-test-email:hover { opacity: 0.9; }
         .backfill-coverage {
             margin-top: 20px;
         }
@@ -213,18 +234,30 @@
             margin-bottom: 8px;
         }
         .backfill-coverage-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 6px 0;
+            padding: 10px 0;
             font-size: 13px;
             border-bottom: 1px solid var(--border);
         }
         .backfill-coverage-row:last-child { border-bottom: none; }
-        .backfill-feed-name { font-weight: 500; }
-        .backfill-feed-detail {
+        .backfill-feed-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+        .backfill-feed-name { font-weight: 600; font-size: 14px; }
+        .backfill-feed-count {
+            font-size: 12px;
             color: var(--text-secondary);
-            text-align: right;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1px 8px;
+        }
+        .backfill-feed-meta {
+            color: var(--text-secondary);
+            font-size: 12px;
+            line-height: 1.6;
         }
     </style>
 </head>
@@ -281,7 +314,7 @@
                 </div>
                 <button type="submit" class="btn-declare">Declare Incident</button>
                 <div class="declare-warning">
-                    <strong>This will:</strong> Create an incident on the status page, send a Slack/Teams alert, and create a Jira ticket (if configured).
+                    <strong>This will:</strong> Create an incident on the status page and send alerts via Email, Slack, Teams, and Jira (if configured).
                 </div>
             </form>
         </div>
@@ -335,23 +368,18 @@
                 <h3>Feed Coverage</h3>
                 {% for feed in feed_coverage %}
                 <div class="backfill-coverage-row">
-                    <span class="backfill-feed-name">{{ feed.name }}</span>
-                    <span class="backfill-feed-detail">
-                        {{ feed.incident_count }} incident{{ 's' if feed.incident_count != 1 else '' }}
+                    <div class="backfill-feed-header">
+                        <span class="backfill-feed-name">{{ feed.name }}</span>
+                        <span class="backfill-feed-count">{{ feed.incident_count }} incident{{ 's' if feed.incident_count != 1 else '' }}</span>
+                    </div>
+                    <div class="backfill-feed-meta">
                         {% if feed.date_from and feed.date_to %}
-                            &middot; {{ feed.date_from }} &ndash; {{ feed.date_to }}
-                            {% if feed.days_span is not none %}
-                                (last {{ feed.days_span }} day{{ 's' if feed.days_span != 1 else '' }})
-                            {% endif %}
+                            {{ feed.date_from }} – {{ feed.date_to }}
+                            {%- if feed.days_span is not none %} ({{ feed.days_span }}d){% endif %}<br>
                         {% endif %}
-                        &middot; {{ feed.ingestion }}
-                        {% if feed.known_limit_days is not none %}
-                            &middot; Max backfill {{ feed.known_limit_days }} days
-                        {% else %}
-                            &middot; Max backfill: provider/implementation dependent
-                        {% endif %}
-                        &middot; {{ feed.cap_summary }}
-                    </span>
+                        {{ feed.ingestion }}
+                        {%- if feed.known_limit_days is not none %} · Up to {{ feed.known_limit_days }} days{% endif %}
+                    </div>
                 </div>
                 {% endfor %}
             </div>
@@ -386,9 +414,23 @@
             <div class="integration-row">
                 <span>Email</span>
                 <span class="int-status {{ 'configured' if email else 'not-configured' }}">
-                    {{ 'Connected' if email else 'Not configured' }}
+                    {%- if email -%}
+                        {% if config.get('RESEND_API_KEY') %}via Resend{% elif config.get('SMTP_HOST') %}via SMTP ({{ config.get('SMTP_HOST') }}){% endif %}
+                        → {{ config.get('ALERT_EMAIL_TO_MASKED') }}
+                    {%- else -%}
+                        Not configured
+                    {%- endif -%}
                 </span>
             </div>
+            {% if email %}
+            <div class="integration-row" style="border-bottom:none; padding-top:2px;">
+                <span class="integration-detail">Notifies on manual incidents, active public-feed incidents, and resolutions. Historical backfill does not send alerts.</span>
+                <form method="POST" action="{{ url_for('admin_test_email') }}" style="margin:0;">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn-test-email">Send Test Email</button>
+                </form>
+            </div>
+            {% endif %}
             <div class="integration-row">
                 <span>Entra ID SSO</span>
                 <span class="int-status not-configured">Not configured</span>

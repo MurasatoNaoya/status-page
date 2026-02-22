@@ -26,6 +26,7 @@ from status_page.checker import check_dns_bar, run_check
 from status_page.config_schema import validate_config
 from status_page.feed_importer import poll_status_feed
 from status_page.status_feeds import get_feed_backfill_capability
+from status_page.alerts import send_test_email
 from status_page.incident_service import (
     declare_incident_with_alerts,
     resolve_incident_with_alerts,
@@ -191,6 +192,21 @@ def format_day(iso_date):
         return f"{d.day} {d.strftime('%b')} {d.year}"
     except (ValueError, AttributeError):
         return iso_date
+
+
+def _mask_email(email):
+    if not email or "@" not in email:
+        return ""
+    local, domain = email.split("@", 1)
+    keep = min(2, len(local))
+    return f"{local[:keep]}***@{domain}"
+
+
+def _mask_email_list(value):
+    if not value:
+        return ""
+    emails = [v.strip() for v in value.split(",") if v.strip()]
+    return ", ".join(_mask_email(e) for e in emails if "@" in e)
 
 
 def load_config(path="config.yaml"):
@@ -940,8 +956,9 @@ def admin_panel():
         "TEAMS_WEBHOOK_URL": os.environ.get("TEAMS_WEBHOOK_URL"),
         "JIRA_URL": os.environ.get("JIRA_URL"),
         "ALERT_EMAIL_TO": os.environ.get("ALERT_EMAIL_TO"),
+        "ALERT_EMAIL_TO_MASKED": _mask_email_list(os.environ.get("ALERT_EMAIL_TO")),
         "SMTP_HOST": os.environ.get("SMTP_HOST"),
-        "RESEND_API_KEY": os.environ.get("RESEND_API_KEY"),
+        "RESEND_API_KEY": bool(os.environ.get("RESEND_API_KEY")),
         "RESEND_FROM": os.environ.get("RESEND_FROM"),
     }
     # Build feed coverage info for the backfill section
@@ -1078,6 +1095,20 @@ def admin_backfill():
         flash(
             f"Backfill complete: {imported} new incident(s) imported from {len(STATUS_FEEDS)} feed(s)."
         )
+    return redirect(url_for("admin_panel"))
+
+
+@app.route("/admin/test-email", methods=["POST"])
+@login_required
+def admin_test_email():
+    if not _check_csrf_token():
+        flash("Invalid form submission. Please try again.")
+        return redirect(url_for("admin_panel"))
+    sent = send_test_email()
+    if sent:
+        flash("Test email sent.")
+    else:
+        flash("Test email failed. Check email configuration and logs.")
     return redirect(url_for("admin_panel"))
 
 

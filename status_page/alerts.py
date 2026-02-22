@@ -64,6 +64,16 @@ def send_resolution(incident_id, message, jira_key=None):
     _resolve_jira_ticket(incident_id, message, jira_key=jira_key)
 
 
+def send_test_email():
+    """Send a basic connectivity test email using configured transport."""
+    subject = "Status Page Test"
+    body = (
+        "This is a test email from your status page.\n\n"
+        "If you received this, email alerts are configured correctly."
+    )
+    return _send_email(subject, body)
+
+
 def _send_email_incident(incident_id, title, impact, message, service):
     svc_text = f" ({service})" if service else ""
     subject = f"[Status Page] Incident #{incident_id}{svc_text}: {title}"
@@ -92,24 +102,22 @@ def _send_email(subject, body):
     smtp_host = os.environ.get("SMTP_HOST")
     if not recipients:
         logger.debug("Email alert not configured (need ALERT_EMAIL_TO), skipping")
-        return
+        return False
 
     # Prefer Resend if configured; fall back to SMTP if it fails.
     if resend_api_key and resend_from:
-        if _send_email_via_resend(
-            subject, body, recipients, resend_api_key, resend_from
-        ):
-            return
+        if _send_email_via_resend(subject, body, recipients, resend_api_key, resend_from):
+            return True
         if not smtp_host:
-            return
+            return False
 
     if not smtp_host:
         logger.debug(
             "Email alert not configured (need RESEND_API_KEY/RESEND_FROM or SMTP_HOST), skipping"
         )
-        return
+        return False
 
-    _send_email_via_smtp(subject, body, recipients, smtp_host)
+    return _send_email_via_smtp(subject, body, recipients, smtp_host)
 
 
 def _send_email_via_resend(subject, body, recipients, api_key, from_email):
@@ -177,8 +185,10 @@ def _send_email_via_smtp(subject, body, recipients, smtp_host):
                     server.login(smtp_user, smtp_pass)
                 server.send_message(msg)
         logger.info("Email alert sent via SMTP to %d recipient(s)", len(recipients))
+        return True
     except Exception as e:
         logger.error("SMTP email alert failed: %s", e)
+        return False
 
 
 def _send_slack(incident_id, title, impact, message, service):

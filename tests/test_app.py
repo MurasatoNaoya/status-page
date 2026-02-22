@@ -1774,7 +1774,9 @@ class TestPollStatusFeed:
         ]
         with (
             patch("status_page.feed_importer.poll_feed", return_value=feed_results),
-            patch("status_page.feed_importer.send_alerts", return_value=None) as mock_alerts,
+            patch(
+                "status_page.feed_importer.send_alerts", return_value=None
+            ) as mock_alerts,
         ):
             poll_status_feed({"name": "TestFeed"})
 

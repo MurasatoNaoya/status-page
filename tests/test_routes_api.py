@@ -99,3 +99,28 @@ class TestAPIRoutes:
             headers={"X-CSRF-Token": csrf_token},
         )
         assert resp.status_code == 404
+
+    def test_update_incident_api_resolved_uses_alerting_path(self, app_client):
+        csrf_token = "test-csrf-token"
+        with app_client.session_transaction() as sess:
+            sess["admin"] = True
+            sess["_csrf_token"] = csrf_token
+
+        # Create an incident first
+        resp = app_client.post(
+            "/api/incidents",
+            json={"title": "Resolve via API", "message": "init"},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        inc_id = resp.get_json()["id"]
+
+        with patch("status_page.app.resolve_incident_with_alerts") as mock_resolve:
+            mock_resolve.return_value = True
+            resp = app_client.patch(
+                f"/api/incidents/{inc_id}",
+                json={"status": "resolved", "message": "fixed"},
+                headers={"X-CSRF-Token": csrf_token},
+            )
+
+        assert resp.status_code == 200
+        mock_resolve.assert_called_once_with(incident_id=inc_id, message="fixed")

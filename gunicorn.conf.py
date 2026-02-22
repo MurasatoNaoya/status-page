@@ -9,5 +9,7 @@ threads = 2
 timeout = 30
 accesslog = "-"
 errorlog = "-"
-max_requests = 1000
-max_requests_jitter = 50
+# Single-worker setup: keep recycling infrequent to avoid avoidable brief
+# unavailability during worker restarts.
+max_requests = 10000
+max_requests_jitter = 500

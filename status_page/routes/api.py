@@ -56,9 +56,14 @@ def update_incident(incident_id):
                 "error": f"Invalid status. Must be one of: {', '.join(sorted(ctx['valid_statuses']))}"
             }
         ), 400
-    updated = ctx["update_incident"](
-        incident_id, status=data["status"], message=data["message"][:2000]
-    )
+    if data["status"] == "resolved":
+        updated = ctx["resolve_incident_with_alerts"](
+            incident_id=incident_id, message=data["message"][:2000]
+        )
+    else:
+        updated = ctx["update_incident"](
+            incident_id, status=data["status"], message=data["message"][:2000]
+        )
     if not updated:
         return jsonify({"error": "Incident not found"}), 404
     ctx["invalidate_index_cache"]("api_update_incident")

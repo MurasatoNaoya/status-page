@@ -8,6 +8,16 @@ Lightweight Flask status dashboard for internal/public service visibility.
 - Shows 90-day uptime bars with strict no-synthetic-data behavior
 - Supports admin incident workflows + alerts (Email/Slack/Teams/Jira)
 
+## Tech Stack
+- Python 3, Flask, Gunicorn, APScheduler
+- SQLite (WAL mode) for checks/incidents/updates
+- Jinja templates + lightweight vanilla CSS/JS
+
+## Design Principles
+- **No synthetic health data**: unknown history stays gray, never fabricated green.
+- **Operationally simple**: one process model, SQLite backups, straightforward deploy.
+- **Practical extensibility**: feed adapters, check types, and alert transports are modular.
+
 ## Quick Start
 ```bash
 python -m venv .venv
@@ -23,6 +33,7 @@ flask run
 ```
 
 Open: `http://127.0.0.1:5000`
+Default admin login is `admin` / `testpass` in the example above (dev only).
 
 ## Docs
 - `docs/PROJECT.md` — full architecture and operational guide

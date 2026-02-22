@@ -1,7 +1,7 @@
 .venv/
 __pycache__/
 *.pyc
-status.db
+*.db
 *.db-journal
 *.db-wal
 .DS_Store

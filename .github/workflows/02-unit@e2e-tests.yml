@@ -1,4 +1,4 @@
-name: Tests
+name: "02 · Unit & E2E Tests"
 
 on:
   push:
@@ -20,6 +20,9 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements-dev.txt
+
+      - name: Type check
+        run: mypy status_page/runtime.py status_page/routes/
 
       - name: Run unit tests with coverage
         run: pytest tests --ignore=tests/test_e2e.py -v --cov=status_page --cov-report=term-missing --cov-fail-under=75

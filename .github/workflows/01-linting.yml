@@ -1,4 +1,4 @@
-name: Lint
+name: "01 · Linting"
 
 on:
   push:

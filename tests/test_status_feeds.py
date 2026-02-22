@@ -454,13 +454,13 @@ class TestPollAzureRSS:
 
 class TestPollFeed:
     def test_dispatches_to_statuspage(self):
-        with patch("status_page.status_feeds.poll_statuspage_api") as mock:
+        with patch("status_page.feeds.poll_statuspage_api") as mock:
             mock.return_value = []
             poll_feed({"name": "GitHub", "url": "https://example.com"})
             mock.assert_called_once()
 
     def test_dispatches_to_azure_rss(self):
-        with patch("status_page.status_feeds.poll_azure_rss") as mock:
+        with patch("status_page.feeds.poll_azure_rss") as mock:
             mock.return_value = []
             poll_feed(
                 {"name": "Azure", "type": "azure_rss", "url": "https://example.com"}
@@ -619,3 +619,377 @@ class TestHistoryParserHardening:
         assert len(parsed) == 1
         assert parsed[0]["external_id"] == "azure-pir-TRK123"
         assert "AKS & ARM outage" in parsed[0]["title"]
+
+
+class TestParseAzureHistory:
+    """Test Azure history page scraping (integration-style tests from test_app.py)."""
+
+    SAMPLE_HTML = """
+    <div class="row incident-history-header">
+      <div class="col-sm-1 incident-history-day">Feb 2</div>
+      <div class="col-sm-11 incident-history-item">
+        <div class="col-md-8 incident-history-title">PIR \u2013 Virtual Machines and AKS outage</div>
+        <div class="col-md-3 incident-history-tracking-id">Tracking ID: TEST-123</div>
+      </div>
+      <div class="collapse incident-history-collapse">
+        <div class="card-body">
+          Between 19:46 UTC on 02 February 2026 and 06:05 UTC on 03 February 2026,
+          customers using Virtual Machines and AKS in all regions may have experienced failures.
+        </div>
+      </div>
+    </div>
+    <div class="row incident-history-header">
+      <div class="col-sm-1 incident-history-day">Feb 7</div>
+      <div class="col-sm-11 incident-history-item">
+        <div class="col-md-8 incident-history-title">PIR \u2013 Power event West US</div>
+        <div class="col-md-3 incident-history-tracking-id">Tracking ID: WUS-456</div>
+      </div>
+      <div class="collapse incident-history-collapse">
+        <div class="card-body">
+          Between 07:58 UTC on 07 February 2026 power event impacted services in West US region.
+        </div>
+      </div>
+    </div>
+    """
+
+    def test_parses_incident_title_and_id(self):
+        incidents = _parse_azure_history(self.SAMPLE_HTML, exclude_regions=[])
+        assert len(incidents) == 2
+        assert incidents[0]["title"] == "PIR \u2013 Virtual Machines and AKS outage"
+        assert incidents[0]["external_id"] == "azure-pir-TEST-123"
+
+    def test_matches_azure_services(self):
+        incidents = _parse_azure_history(self.SAMPLE_HTML, exclude_regions=[])
+        vm_inc = incidents[0]
+        assert vm_inc["services"] is not None
+        assert any("AKS" in s or "Kubernetes" in s for s in vm_inc["services"])
+
+    def test_region_filtering_excludes_west_us(self):
+        incidents = _parse_azure_history(self.SAMPLE_HTML, exclude_regions=["West US"])
+        assert len(incidents) == 1
+        assert "Virtual Machines" in incidents[0]["title"]
+
+    def test_global_incident_not_excluded(self):
+        incidents = _parse_azure_history(
+            self.SAMPLE_HTML, exclude_regions=["West US", "East US"]
+        )
+        assert len(incidents) == 1
+        assert "all regions" in incidents[0]["updates"][-1]["message"].lower()
+
+    def test_extracts_start_and_end_times(self):
+        incidents = _parse_azure_history(self.SAMPLE_HTML, exclude_regions=[])
+        inc = incidents[0]
+        assert inc["created_at"] == "2026-02-02T19:46:00Z"
+        assert inc["resolved_at"] == "2026-02-03T06:05:00Z"
+
+    def test_strips_video_preamble(self):
+        html = """
+        <div class="row incident-history-header">
+          <div class="col-sm-11 incident-history-item">
+            <div class="col-md-8 incident-history-title">PIR \u2013 Entra PIM failures</div>
+            <div class="col-md-3 incident-history-tracking-id">Tracking ID: VID-789</div>
+          </div>
+          <div class="collapse incident-history-collapse">
+            <div class="card-body">
+              Watch our 'Azure Incident Retrospective' video about this incident: https://aka.ms/air/VID-789
+              What happened? Between 08:05 UTC and 18:30 UTC on 22 December 2025,
+              Entra PIM experienced API failures.
+            </div>
+          </div>
+        </div>
+        """
+        incidents = _parse_azure_history(html, exclude_regions=[])
+        assert len(incidents) == 1
+        summary = incidents[0]["updates"][-1]["message"]
+        assert "Watch our" not in summary
+        assert "Entra PIM" in summary
+
+    def test_all_history_incidents_are_resolved(self):
+        incidents = _parse_azure_history(self.SAMPLE_HTML, exclude_regions=[])
+        for inc in incidents:
+            assert inc["status"] == "resolved"
+
+
+class TestPollStatusioAPIIntegration:
+    """Test the Status.io API poller (integration-style tests from test_app.py)."""
+
+    def _make_statusio_response(self, incidents=None, components=None):
+        """Build a fake Status.io API response."""
+        return {
+            "result": {
+                "status_overall": {"status": "Operational", "status_code": 100},
+                "status": components or [],
+                "incidents": incidents or [],
+                "maintenance": {"active": [], "upcoming": []},
+            }
+        }
+
+    def test_returns_incidents_with_correct_format(self):
+        from status_page.status_feeds import poll_statusio_api
+
+        feed_config = {
+            "name": "Docker",
+            "url": "https://api.status.io/1.0/status/533c6539221ae15e3f000031",
+            "components": {"Docker Hub Registry": "Docker Hub"},
+            "interval": 300,
+        }
+        fake_resp = self._make_statusio_response(
+            incidents=[
+                {
+                    "_id": "abc123",
+                    "name": "Registry outage",
+                    "datetime_open": "2026-02-10T10:00:00.000Z",
+                    "datetime_close": "",
+                    "messages": [
+                        {
+                            "details": "Investigating the issue.",
+                            "status": 500,
+                            "datetime": "2026-02-10T10:00:00.000Z",
+                        },
+                    ],
+                    "components_affected": [
+                        {"name": "Docker Hub Registry", "_id": "comp1"}
+                    ],
+                }
+            ]
+        )
+        with patch("status_page.status_feeds.SESSION.get") as mock_get:
+            mock_get.return_value.status_code = 200
+            mock_get.return_value.json.return_value = fake_resp
+            mock_get.return_value.raise_for_status = lambda: None
+            results = poll_statusio_api(feed_config)
+
+        incidents = [r for r in results if r.get("type") != "component_status"]
+        assert len(incidents) == 1
+        inc = incidents[0]
+        assert inc["title"] == "Registry outage"
+        assert inc["external_id"] == "abc123"
+        assert inc["services"] == ["Docker Hub"]
+        assert inc["impact"] == "major"  # status 500 = major
+        assert inc["status"] == "investigating"  # not closed
+        assert len(inc["updates"]) == 1
+
+    def test_resolved_incident_has_resolved_status(self):
+        from status_page.status_feeds import poll_statusio_api
+
+        feed_config = {
+            "name": "Docker",
+            "url": "https://api.status.io/1.0/status/fake",
+            "components": {"Docker Hub Registry": "Docker Hub"},
+        }
+        fake_resp = self._make_statusio_response(
+            incidents=[
+                {
+                    "_id": "def456",
+                    "name": "Brief outage",
+                    "datetime_open": "2026-02-10T10:00:00.000Z",
+                    "datetime_close": "2026-02-10T11:00:00.000Z",
+                    "messages": [
+                        {
+                            "details": "Fixed.",
+                            "status": 100,
+                            "datetime": "2026-02-10T11:00:00.000Z",
+                        },
+                        {
+                            "details": "Investigating.",
+                            "status": 500,
+                            "datetime": "2026-02-10T10:00:00.000Z",
+                        },
+                    ],
+                    "components_affected": [
+                        {"name": "Docker Hub Registry", "_id": "comp1"}
+                    ],
+                }
+            ]
+        )
+        with patch("status_page.status_feeds.SESSION.get") as mock_get:
+            mock_get.return_value.status_code = 200
+            mock_get.return_value.json.return_value = fake_resp
+            mock_get.return_value.raise_for_status = lambda: None
+            results = poll_statusio_api(feed_config)
+
+        incidents = [r for r in results if r.get("type") != "component_status"]
+        assert len(incidents) == 1
+        assert incidents[0]["status"] == "resolved"
+        assert incidents[0]["resolved_at"] == "2026-02-10T11:00:00.000Z"
+
+    def test_maps_status_codes_to_impact(self):
+        from status_page.status_feeds import _statusio_code_to_impact
+
+        assert _statusio_code_to_impact(100) == "none"
+        assert _statusio_code_to_impact(300) == "minor"
+        assert _statusio_code_to_impact(400) == "partial"
+        assert _statusio_code_to_impact(500) == "major"
+        assert _statusio_code_to_impact(600) == "major"
+
+    def test_returns_component_status(self):
+        from status_page.status_feeds import poll_statusio_api
+
+        feed_config = {
+            "name": "Docker",
+            "url": "https://api.status.io/1.0/status/fake",
+            "components": {"Docker Hub Registry": "Docker Hub"},
+        }
+        fake_resp = self._make_statusio_response(
+            components=[
+                {
+                    "id": "comp1",
+                    "name": "Docker Hub Registry",
+                    "status": "Degraded Performance",
+                    "status_code": 300,
+                    "containers": [],
+                    "updated": "2026-02-10T10:00:00.000Z",
+                }
+            ]
+        )
+        with patch("status_page.status_feeds.SESSION.get") as mock_get:
+            mock_get.return_value.status_code = 200
+            mock_get.return_value.json.return_value = fake_resp
+            mock_get.return_value.raise_for_status = lambda: None
+            results = poll_statusio_api(feed_config)
+
+        comp_items = [r for r in results if r.get("type") == "component_status"]
+        assert len(comp_items) == 1
+        assert comp_items[0]["service_name"] == "Docker Hub"
+        assert comp_items[0]["status"] == "degraded_performance"
+
+    def test_unmapped_components_ignored(self):
+        from status_page.status_feeds import poll_statusio_api
+
+        feed_config = {
+            "name": "Docker",
+            "url": "https://api.status.io/1.0/status/fake",
+            "components": {"Docker Hub Registry": "Docker Hub"},
+        }
+        fake_resp = self._make_statusio_response(
+            incidents=[
+                {
+                    "_id": "xyz789",
+                    "name": "Desktop issue",
+                    "datetime_open": "2026-02-10T10:00:00.000Z",
+                    "datetime_close": "",
+                    "messages": [
+                        {
+                            "details": "Issue.",
+                            "status": 400,
+                            "datetime": "2026-02-10T10:00:00.000Z",
+                        }
+                    ],
+                    "components_affected": [{"name": "Docker Desktop", "_id": "comp2"}],
+                }
+            ]
+        )
+        with patch("status_page.status_feeds.SESSION.get") as mock_get:
+            mock_get.return_value.status_code = 200
+            mock_get.return_value.json.return_value = fake_resp
+            mock_get.return_value.raise_for_status = lambda: None
+            results = poll_statusio_api(feed_config)
+
+        incidents = [r for r in results if r.get("type") != "component_status"]
+        assert len(incidents) == 1
+        assert incidents[0]["services"] is None or incidents[0]["services"] == []
+
+    def test_api_failure_returns_empty(self):
+        from status_page.status_feeds import poll_statusio_api
+
+        feed_config = {
+            "name": "Docker",
+            "url": "https://api.status.io/1.0/status/fake",
+            "components": {},
+        }
+        with patch("status_page.status_feeds.SESSION.get") as mock_get:
+            mock_get.side_effect = Exception("Connection refused")
+            results = poll_statusio_api(feed_config)
+        assert results == []
+
+
+class TestScrapeStatusioHistory:
+    """Test scraping Status.io history page for historical incidents."""
+
+    SAMPLE_HTML = """
+    <div class="row incident" id="statusio_incident_abc123def">
+      <div class="col-md-12"><div class="panel panel-default make_round">
+        <div class="panel-heading make_round" style="background:#ffb463;">
+          <div class="panel-title"><h5 class="white">
+            <a href="/pages/incident/fake/abc123def" style="color:#FFF;">Registry outage title</a>
+            <span class="pull-right status_description">Partial Service Disruption</span>
+          </h5></div>
+        </div>
+        <div class="panel-body">
+          <div class="row"><div class="col-xs-12 col-md-2">
+            <p class="pull-left text event_inner_title">Components  </p></div>
+            <div class="col-xs-12 col-md-10">
+              <p class="incident_section event_inner_text">Docker Hub Registry, Docker Authentication</p>
+          </div></div>
+          <div class="row" style="margin-top:20px;">
+            <div class="col-md-4"><strong class="incident_time">Feb 10, 2026 14:52 PST<br>February 10, 2026 22:52 UTC</strong></div>
+            <div class="col-md-8">
+              <div class="incident_update_status"><strong><span></span>RESOLVED</strong></div>
+              <span class="incident_message_details" id="statusio_incident_message_msg1">Issue resolved.</span>
+            </div>
+          </div>
+          <div class="row" style="margin-top:20px;">
+            <div class="col-md-4"><strong class="incident_time">Feb 10, 2026 13:00 PST<br>February 10, 2026 21:00 UTC</strong></div>
+            <div class="col-md-8">
+              <div class="incident_update_status"><strong><span></span>INVESTIGATING</strong></div>
+              <span class="incident_message_details" id="statusio_incident_message_msg2">Looking into it.</span>
+            </div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+    """
+
+    def test_parses_incident_title_and_id(self):
+        incidents = _parse_statusio_history(
+            self.SAMPLE_HTML,
+            {
+                "Docker Hub Registry": "Docker Hub",
+                "Docker Authentication": "Docker Hub",
+            },
+        )
+        assert len(incidents) == 1
+        assert incidents[0]["title"] == "Registry outage title"
+        assert incidents[0]["external_id"] == "abc123def"
+
+    def test_maps_components_to_services(self):
+        incidents = _parse_statusio_history(
+            self.SAMPLE_HTML,
+            {
+                "Docker Hub Registry": "Docker Hub",
+                "Docker Authentication": "Docker Hub",
+            },
+        )
+        assert "Docker Hub" in incidents[0]["services"]
+
+    def test_parses_severity(self):
+        incidents = _parse_statusio_history(
+            self.SAMPLE_HTML,
+            {
+                "Docker Hub Registry": "Docker Hub",
+            },
+        )
+        assert (
+            incidents[0]["impact"] == "partial"
+        )  # Partial Service Disruption = partial
+
+    def test_parses_updates_newest_first(self):
+        incidents = _parse_statusio_history(
+            self.SAMPLE_HTML,
+            {
+                "Docker Hub Registry": "Docker Hub",
+            },
+        )
+        updates = incidents[0]["updates"]
+        assert len(updates) == 2
+        assert updates[0]["status"] == "resolved"
+        assert updates[1]["status"] == "investigating"
+
+    def test_resolved_incident_has_resolved_status(self):
+        incidents = _parse_statusio_history(
+            self.SAMPLE_HTML,
+            {
+                "Docker Hub Registry": "Docker Hub",
+            },
+        )
+        assert incidents[0]["status"] == "resolved"

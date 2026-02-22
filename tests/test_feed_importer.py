@@ -198,3 +198,354 @@ def test_integrityerror_race_path_still_sends_resolution(monkeypatch):
     feed_importer.poll_status_feed({"name": "GitHub"})
 
     assert resolutions and resolutions[0]["incident_id"] == 501
+
+
+# ---------------------------------------------------------------------------
+# Integration tests (require database fixture from conftest.py)
+# ---------------------------------------------------------------------------
+
+from unittest.mock import patch
+
+import status_page.database as database
+
+
+class TestPollStatusFeedServiceFiltering:
+    """Test that poll_status_feed correctly skips or creates incidents based on service mapping."""
+
+    def test_feed_with_components_skips_unmapped_incidents(self):
+        """When a feed has a component map, incidents with no matching services should be skipped."""
+        from status_page.feed_importer import poll_status_feed
+
+        feed_results = [
+            {
+                "external_id": "unmapped-123",
+                "title": "Docker Desktop issue",
+                "status": "resolved",
+                "services": None,
+                "updates": [{"status": "investigating", "message": "Looking"}],
+                "source": "Docker",
+            }
+        ]
+        feed_config = {
+            "name": "Docker",
+            "components": {"Docker Hub Registry": "Docker Hub"},
+        }
+        with patch("status_page.feed_importer.poll_feed", return_value=feed_results):
+            poll_status_feed(feed_config)
+
+        inc = database.get_incident_by_external_id("unmapped-123")
+        assert inc is None
+
+    def test_feed_with_components_creates_mapped_incidents(self):
+        """When a feed has a component map, incidents WITH matching services should be created."""
+        from status_page.feed_importer import poll_status_feed
+
+        feed_results = [
+            {
+                "external_id": "mapped-456",
+                "title": "Docker Hub outage",
+                "status": "resolved",
+                "services": ["Docker Hub"],
+                "updates": [{"status": "investigating", "message": "Looking"}],
+                "source": "Docker",
+            }
+        ]
+        feed_config = {
+            "name": "Docker",
+            "components": {"Docker Hub Registry": "Docker Hub"},
+        }
+        with patch("status_page.feed_importer.poll_feed", return_value=feed_results):
+            poll_status_feed(feed_config)
+
+        inc = database.get_incident_by_external_id("mapped-456:Docker Hub")
+        assert inc is not None
+        assert inc["service_name"] == "Docker Hub"
+
+    def test_feed_without_components_creates_null_service_incidents(self):
+        """Feeds without component maps should still create incidents with service_name=NULL."""
+        from status_page.feed_importer import poll_status_feed
+
+        feed_results = [
+            {
+                "external_id": "azure-rss-999",
+                "title": "Some Azure issue",
+                "status": "resolved",
+                "services": None,
+                "updates": [{"status": "investigating", "message": "Looking"}],
+                "source": "Azure",
+            }
+        ]
+        feed_config = {"name": "Azure"}
+        with patch("status_page.feed_importer.poll_feed", return_value=feed_results):
+            poll_status_feed(feed_config)
+
+        inc = database.get_incident_by_external_id("azure-rss-999")
+        assert inc is not None
+        assert inc["service_name"] is None
+
+
+class TestPollStatusFeedIntegration:
+    """Test poll_status_feed per-service incident creation (integration tests)."""
+
+    def test_creates_one_incident_per_affected_service(self):
+        from status_page.feed_importer import poll_status_feed
+
+        feed_results = [
+            {
+                "external_id": "test-multi-svc",
+                "title": "Multi-service outage",
+                "status": "resolved",
+                "impact": "partial",
+                "services": ["ServiceA", "ServiceB", "ServiceC"],
+                "created_at": "2026-02-14T10:00:00Z",
+                "resolved_at": "2026-02-14T12:00:00Z",
+                "source": "TestFeed",
+                "updates": [
+                    {"status": "investigating", "message": "Looking into it"},
+                ],
+            }
+        ]
+        with patch("status_page.feed_importer.poll_feed", return_value=feed_results):
+            poll_status_feed({"name": "TestFeed"})
+
+        a = database.get_incident_by_external_id("test-multi-svc:ServiceA")
+        b = database.get_incident_by_external_id("test-multi-svc:ServiceB")
+        c = database.get_incident_by_external_id("test-multi-svc:ServiceC")
+        assert a is not None
+        assert b is not None
+        assert c is not None
+        assert a["service_name"] == "ServiceA"
+        assert b["service_name"] == "ServiceB"
+
+    def test_skips_already_imported_incidents(self):
+        from status_page.feed_importer import poll_status_feed
+
+        database.create_incident(
+            title="Existing", external_id="existing-123", service_name="Svc"
+        )
+        feed_results = [
+            {
+                "external_id": "existing-123",
+                "title": "Existing incident",
+                "status": "investigating",
+                "services": ["Svc"],
+                "updates": [],
+                "source": "TestFeed",
+            }
+        ]
+        with patch("status_page.feed_importer.poll_feed", return_value=feed_results):
+            poll_status_feed({"name": "TestFeed"})
+
+        incidents = database.get_recent_incidents(limit=50)
+        matching = [i for i in incidents if i["external_id"] == "existing-123"]
+        assert len(matching) == 1
+
+    def test_updates_status_to_resolved(self):
+        from status_page.feed_importer import poll_status_feed
+
+        database.create_incident(
+            title="Open incident",
+            external_id="resolve-me:Svc",
+            service_name="Svc",
+            status="investigating",
+        )
+        feed_results = [
+            {
+                "external_id": "resolve-me",
+                "title": "Open incident",
+                "status": "resolved",
+                "services": ["Svc"],
+                "updates": [],
+                "source": "TestFeed",
+            }
+        ]
+        with patch("status_page.feed_importer.poll_feed", return_value=feed_results):
+            poll_status_feed({"name": "TestFeed"})
+
+        inc = database.get_incident_by_external_id("resolve-me:Svc")
+        assert inc["status"] == "resolved"
+        assert inc["resolved_at"] is not None
+
+    def test_skips_component_status_items(self):
+        from status_page.feed_importer import poll_status_feed
+
+        feed_results = [
+            {
+                "type": "component_status",
+                "service_name": "Svc",
+                "status": "operational",
+                "source": "TestFeed",
+            }
+        ]
+        with patch("status_page.feed_importer.poll_feed", return_value=feed_results):
+            poll_status_feed({"name": "TestFeed"})
+        assert database.get_recent_incidents(limit=10) == []
+
+    def test_incident_with_no_services_uses_none(self):
+        from status_page.feed_importer import poll_status_feed
+
+        feed_results = [
+            {
+                "external_id": "no-svc-123",
+                "title": "Unknown service outage",
+                "status": "investigating",
+                "services": None,
+                "updates": [{"status": "investigating", "message": "Looking into it"}],
+                "source": "TestFeed",
+            }
+        ]
+        with patch("status_page.feed_importer.poll_feed", return_value=feed_results):
+            poll_status_feed({"name": "TestFeed"})
+
+        inc = database.get_incident_by_external_id("no-svc-123")
+        assert inc is not None
+        assert inc["service_name"] is None
+
+    def test_new_active_feed_incident_sends_alerts(self):
+        from status_page.feed_importer import poll_status_feed
+
+        feed_results = [
+            {
+                "external_id": "active-123",
+                "title": "Active outage",
+                "status": "investigating",
+                "impact": "major",
+                "services": ["Svc"],
+                "updates": [{"status": "investigating", "message": "Investigating"}],
+                "source": "TestFeed",
+            }
+        ]
+        with (
+            patch("status_page.feed_importer.poll_feed", return_value=feed_results),
+            patch(
+                "status_page.feed_importer.send_alerts", return_value=None
+            ) as mock_alerts,
+        ):
+            poll_status_feed({"name": "TestFeed"})
+
+        mock_alerts.assert_called_once()
+
+    def test_new_resolved_feed_incident_does_not_send_alerts(self):
+        from status_page.feed_importer import poll_status_feed
+
+        feed_results = [
+            {
+                "external_id": "resolved-123",
+                "title": "Old resolved outage",
+                "status": "resolved",
+                "impact": "minor",
+                "services": ["Svc"],
+                "updates": [{"status": "resolved", "message": "Resolved"}],
+                "source": "TestFeed",
+            }
+        ]
+        with (
+            patch("status_page.feed_importer.poll_feed", return_value=feed_results),
+            patch("status_page.feed_importer.send_alerts") as mock_alerts,
+        ):
+            poll_status_feed({"name": "TestFeed"})
+
+        mock_alerts.assert_not_called()
+
+    def test_existing_feed_incident_resolution_sends_resolution_alert(self):
+        from status_page.feed_importer import poll_status_feed
+
+        database.create_incident(
+            title="Open feed incident",
+            external_id="resolve-me-2:Svc",
+            service_name="Svc",
+            status="investigating",
+            jira_key="OPS-123",
+        )
+        feed_results = [
+            {
+                "external_id": "resolve-me-2",
+                "title": "Open feed incident",
+                "status": "resolved",
+                "impact": "minor",
+                "services": ["Svc"],
+                "updates": [],
+                "source": "TestFeed",
+            }
+        ]
+        with (
+            patch("status_page.feed_importer.poll_feed", return_value=feed_results),
+            patch("status_page.feed_importer.send_resolution") as mock_resolution,
+        ):
+            poll_status_feed({"name": "TestFeed"})
+
+        mock_resolution.assert_called_once()
+
+    def test_existing_resolved_feed_incident_reopen_sends_alert(self):
+        from status_page.feed_importer import poll_status_feed
+
+        database.create_incident(
+            title="Resolved feed incident",
+            external_id="reopen-me:Svc",
+            service_name="Svc",
+            status="resolved",
+            jira_key="OPS-777",
+        )
+        feed_results = [
+            {
+                "external_id": "reopen-me",
+                "title": "Resolved feed incident",
+                "status": "investigating",
+                "impact": "major",
+                "services": ["Svc"],
+                "updates": [],
+                "source": "TestFeed",
+            }
+        ]
+        with (
+            patch("status_page.feed_importer.poll_feed", return_value=feed_results),
+            patch(
+                "status_page.feed_importer.send_alerts", return_value=None
+            ) as mock_alerts,
+        ):
+            poll_status_feed({"name": "TestFeed"})
+
+        mock_alerts.assert_called_once()
+
+    def test_integrity_race_path_applies_reopen_alert_logic(self):
+        from status_page.feed_importer import poll_status_feed
+        import sqlite3
+
+        feed_results = [
+            {
+                "external_id": "race-id",
+                "title": "Race incident",
+                "status": "investigating",
+                "impact": "partial",
+                "services": ["Svc"],
+                "updates": [],
+                "source": "TestFeed",
+            }
+        ]
+        existing = {
+            "id": 99,
+            "status": "resolved",
+            "impact": "minor",
+            "jira_key": "OPS-99",
+        }
+        with (
+            patch("status_page.feed_importer.poll_feed", return_value=feed_results),
+            patch(
+                "status_page.feed_importer.get_incident_by_external_id",
+                side_effect=[None, existing],
+            ),
+            patch(
+                "status_page.feed_importer.create_incident",
+                side_effect=sqlite3.IntegrityError(),
+            ),
+            patch(
+                "status_page.feed_importer._sync_existing_incident",
+                return_value=("resolved", "investigating"),
+            ),
+            patch(
+                "status_page.feed_importer.send_alerts", return_value=None
+            ) as mock_alerts,
+        ):
+            poll_status_feed({"name": "TestFeed"})
+
+        mock_alerts.assert_called_once()

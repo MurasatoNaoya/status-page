@@ -2,3 +2,10 @@
 markers = [
     "e2e: End-to-end browser tests (require live server)",
 ]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false

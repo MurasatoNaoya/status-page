@@ -1,0 +1,70 @@
+name: "03 · Deploy"
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+    steps:
+      - name: Check deploy secrets
+        run: |
+          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_USER" ] || [ -z "${{ secrets.DEPLOY_SSH_KEY }}" ]; then
+            echo "::notice::Deploy secrets not configured, skipping deployment"
+            echo "SKIP=true" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/checkout@v4
+        if: env.SKIP != 'true'
+
+      - name: Start SSH agent
+        if: env.SKIP != 'true'
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Add deploy host
+        if: env.SKIP != 'true'
+        run: ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Sync code
+        if: env.SKIP != 'true'
+        run: |
+          rsync -az --delete \
+            --exclude ".git" \
+            --exclude ".venv" \
+            --exclude "__pycache__" \
+            --exclude "*.pyc" \
+            --exclude ".env" \
+            --exclude "*.db" \
+            --exclude "*.db-wal" \
+            --exclude "*.db-shm" \
+            --exclude "data" \
+            ./ "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH"
+
+      - name: Restart service
+        if: env.SKIP != 'true'
+        run: |
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd '$DEPLOY_PATH' && sudo systemctl restart status-page && sudo systemctl is-active status-page"
+
+      - name: Verify scheduler health
+        if: env.SKIP != 'true'
+        run: |
+          for i in 1 2 3 4 5; do
+            code=$(curl -s -o /tmp/scheduler-health.json -w "%{http_code}" "https://$DEPLOY_HOST/api/health/scheduler")
+            if [ "$code" = "200" ]; then
+              cat /tmp/scheduler-health.json
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Scheduler health check failed:"
+          cat /tmp/scheduler-health.json || true
+          exit 1

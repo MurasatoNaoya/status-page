@@ -36,35 +36,38 @@ Moved ~250 lines of inline CSS from `admin.html` to `status_page/static/admin.cs
 
 Resolution alerts now use Block Kit format consistent with declaration payloads.
 
+### 8) `status_feeds.py` split into per-adapter modules — DONE
+
+Split 1,080-line monolith into `status_page/feeds/` package:
+- `feeds/common.py` — shared utilities (SESSION, TIMEOUT, history tracking, backfill caps)
+- `feeds/statuspage.py` — Atlassian Statuspage API adapter
+- `feeds/azure.py` — Azure RSS + history page scraping
+- `feeds/statusio.py` — Status.io API + history scraping
+- `feeds/__init__.py` — poll_feed dispatcher + re-exports
+- `status_feeds.py` retained as thin re-export for backward compatibility
+
+### 9) `test_app.py` split into focused test files — DONE
+
+Split 1,969-line test file into:
+- `tests/test_routes_public.py` — index page, theme toggle, tooltip tests
+- `tests/test_routes_api.py` — API endpoint tests
+- `tests/test_routes_admin.py` — admin auth and operations tests
+- `tests/test_service_data.py` — build_service_data, bar coverage, auto-detection, severity
+- Status feed tests moved to `tests/test_status_feeds.py`
+- Feed importer integration tests moved to `tests/test_feed_importer.py`
+
+### 10) Database backup strategy — DONE
+
+Added `backup_database()` function using SQLite online backup API with 7-day rotation. Scheduled as daily cron job at 02:30 UTC in the APScheduler.
+
 ## Remaining Issues
 
-### 8) `status_feeds.py` is the largest module (1,079 lines)
-
-Handles four feed types (statuspage, statusio, azure_rss, azure_service_health) plus two history page scrapers in a single file.
-
-Recommended action:
-- Split into per-adapter modules under a `feeds/` directory (e.g., `feeds/statuspage.py`, `feeds/azure_rss.py`).
-
-### 9) `test_app.py` is 1,958 lines
-
-Mixes route tests, rendering tests, and integration tests in one file.
-
-Recommended action:
-- Split into `test_routes_admin.py`, `test_routes_api.py`, `test_routes_public.py`, and `test_index_rendering.py`.
-
-### 10) Backward-compatible wrappers in `app.py`
+### 11) Backward-compatible wrappers in `app.py`
 
 Lines 234-279 contain 6 pass-through functions (`_incident_severity`, `_filter_incidents_for_service`, `run_service_check`, `run_dns_bar_check`) that exist solely for old import paths.
 
 Recommended action:
 - Audit callers and remove once all consumers use the extracted modules directly.
-
-### 11) No database backup strategy
-
-PROJECT.md mentions daily SQLite backup in Phase 6 but no implementation exists.
-
-Recommended action:
-- Add a scheduler task or cron job for daily SQLite backups with rotation.
 
 ### 12) No structured logging
 

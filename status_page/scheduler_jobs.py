@@ -12,6 +12,7 @@ from status_page.incident_service import (
 )
 from status_page.telemetry import incr, observe, timed_call
 from status_page.database import (
+    backup_database,
     cleanup_old_checks,
     get_active_incident_for_service,
     get_recent_checks,
@@ -378,6 +379,21 @@ def create_scheduler(
         minute=0,
         args=["db_cleanup", _run_cleanup],
         id="db_cleanup",
+        replace_existing=True,
+    )
+
+    def _run_backup():
+        path = backup_database(max_backups=7)
+        if path:
+            logger.info("Daily database backup complete: %s", path)
+
+    scheduler.add_job(
+        _run_with_app_context,
+        "cron",
+        hour=2,
+        minute=30,
+        args=["db_backup", _run_backup],
+        id="db_backup",
         replace_existing=True,
     )
 

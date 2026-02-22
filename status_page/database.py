@@ -1,8 +1,10 @@
 import logging
+import shutil
 import sqlite3
 import os
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -733,3 +735,38 @@ def get_feed_incident_stats(service_names):
             list(service_names),
         ).fetchone()
     return dict(row)
+
+
+def backup_database(max_backups=7):
+    """Create a timestamped SQLite backup with rotation.
+
+    Copies the database file to a ``backups/`` directory alongside it,
+    keeping the most recent *max_backups* copies.  Returns the backup
+    path on success, or ``None`` if the source database does not exist.
+    """
+    db_path = Path(DB_PATH)
+    if not db_path.exists():
+        return None
+
+    backup_dir = db_path.parent / "backups"
+    backup_dir.mkdir(exist_ok=True)
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    dest = backup_dir / f"{db_path.stem}-{timestamp}.db"
+
+    # Use SQLite online backup API for a consistent snapshot.
+    src_conn = sqlite3.connect(DB_PATH)
+    dst_conn = sqlite3.connect(str(dest))
+    try:
+        src_conn.backup(dst_conn)
+    finally:
+        dst_conn.close()
+        src_conn.close()
+
+    # Rotate: keep only the newest max_backups files.
+    backups = sorted(backup_dir.glob(f"{db_path.stem}-*.db"))
+    for old in backups[: max(0, len(backups) - max_backups)]:
+        old.unlink(missing_ok=True)
+
+    logger.info("Database backed up to %s (%d kept)", dest.name, min(len(backups), max_backups))
+    return str(dest)

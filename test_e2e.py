@@ -97,6 +97,8 @@ class TestThemeToggle:
         page.locator(".theme-toggle").click()
         # Wait for the data-theme attribute to change, then check color
         expect(page.locator("html")).to_have_attribute("data-theme", "dark")
+        # Wait for browser to repaint with dark mode CSS variables
+        page.wait_for_timeout(300)
         dark_bg = page.evaluate("getComputedStyle(document.body).backgroundColor")
         assert light_bg != dark_bg, "Background color should change in dark mode"
 

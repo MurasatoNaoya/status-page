@@ -64,19 +64,19 @@ body {
 .container {
     max-width: 800px;
     margin: 0 auto;
-    padding: 0 24px;
+    padding: 0 18px;
 }
 
 /* Header */
 .header-row {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
+    align-items: center;
     gap: 12px;
 }
 
 header {
-    padding: 40px 0 32px;
+    padding: 26px 0 20px;
     border-bottom: 1px solid var(--border);
 }
 
@@ -87,11 +87,9 @@ header {
 }
 
 .admin-link {
-    font-size: 13px;
+    font-size: 12px;
     color: var(--text-secondary);
     text-decoration: none;
-    position: relative;
-    top: 3px;
 }
 .admin-link:hover { color: var(--text); }
 
@@ -119,7 +117,7 @@ header {
 [data-theme="dark"] .icon-moon { display: none; }
 
 header h1 {
-    font-size: 24px;
+    font-size: 30px;
     font-weight: 700;
     letter-spacing: -0.03em;
 }
@@ -152,10 +150,10 @@ header p {
 
 /* Overall status banner */
 .overall-status {
-    margin: 32px 0;
-    padding: 18px 20px;
+    margin: 28px 0 20px;
+    padding: 14px 16px;
     border-radius: 0;
-    font-size: 16px;
+    font-size: 20px;
     font-weight: 600;
     display: flex;
     align-items: center;
@@ -279,7 +277,7 @@ header p {
 
 .service {
     background: var(--card-bg);
-    padding: 16px 20px;
+    padding: 14px 16px;
 }
 
 .service-header {
@@ -290,13 +288,13 @@ header p {
 }
 
 .service-name {
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 500;
     letter-spacing: -0.01em;
 }
 
 .group-service .service-name {
-    font-size: 15px;
+    font-size: 16px;
     font-weight: 600;
 }
 
@@ -304,7 +302,7 @@ header p {
     display: flex;
     align-items: center;
     gap: 12px;
-    font-size: 13px;
+    font-size: 12px;
     color: var(--text-secondary);
 }
 
@@ -486,7 +484,7 @@ header p {
 /* All services wrapper — flush continuous block */
 .all-services {
     border: 1px solid var(--border);
-    margin-top: 32px;
+    margin-top: 18px;
 }
 
 .all-services > .services {
@@ -572,7 +570,7 @@ details[open] .services.expanded {
 
 /* Incidents section */
 .incidents-section {
-    margin-top: 56px;
+    margin-top: 40px;
     padding-bottom: 64px;
 }
 

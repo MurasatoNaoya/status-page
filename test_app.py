@@ -26,7 +26,7 @@ class TestIndexPage:
 
     def test_index_contains_theme_toggle(self, app_client):
         resp = app_client.get("/")
-        assert b"toggleTheme" in resp.data
+        assert b"theme-toggle" in resp.data
         assert b"icon-sun" in resp.data
         assert b"icon-moon" in resp.data
 
@@ -45,6 +45,12 @@ class TestIndexPage:
         css = resp.data.decode()
         assert '[data-theme="dark"]' in css
         assert "--green: #4080cf" in css
+
+    def test_csp_uses_nonce_for_scripts(self, app_client):
+        resp = app_client.get("/")
+        csp = resp.headers.get("Content-Security-Policy", "")
+        assert "script-src 'self' 'nonce-" in csp
+        assert "script-src 'self' 'unsafe-inline'" not in csp
 
 
 class TestThemeToggleJS:
@@ -255,7 +261,11 @@ class TestAdminOperations:
             patch.object(
                 app_module,
                 "get_feed_incident_stats",
-                return_value={"cnt": 2, "oldest": "2026-01-01T00:00:00Z", "newest": "2026-02-01T00:00:00Z"},
+                return_value={
+                    "cnt": 2,
+                    "oldest": "2026-01-01T00:00:00Z",
+                    "newest": "2026-02-01T00:00:00Z",
+                },
             ),
         ):
             resp = app_client.get("/admin/feed-coverage")
@@ -279,7 +289,7 @@ class TestAdminOperations:
         assert len(app_module._login_failures) <= 10000
         app_module._login_failures.clear()
 
-    def test_declare_incident_persists_jira_key(self, app_client):
+    def test_declare_incident_calls_service_orchestrator(self, app_client):
         import app as app_module
 
         csrf_token = "test-csrf-token"
@@ -287,7 +297,9 @@ class TestAdminOperations:
             sess["admin"] = True
             sess["_csrf_token"] = csrf_token
 
-        with patch.object(app_module, "send_alerts", return_value="OPS-77"):
+        with patch.object(
+            app_module, "declare_incident_with_alerts", return_value=42
+        ) as mock_decl:
             resp = app_client.post(
                 "/admin/declare",
                 data={
@@ -299,10 +311,9 @@ class TestAdminOperations:
                 },
             )
         assert resp.status_code == 302
-        inc = database.get_recent_incidents(limit=1)[0]
-        assert inc["jira_key"] == "OPS-77"
+        assert mock_decl.called
 
-    def test_resolve_uses_persisted_jira_key(self, app_client):
+    def test_resolve_routes_through_service_orchestrator(self, app_client):
         import app as app_module
 
         csrf_token = "test-csrf-token"
@@ -311,12 +322,11 @@ class TestAdminOperations:
             sess["_csrf_token"] = csrf_token
 
         inc_id = database.create_incident(
-            title="Outage",
-            impact="major",
-            message="Investigating",
-            jira_key="OPS-123",
+            title="Outage", impact="major", message="Investigating"
         )
-        with patch.object(app_module, "send_resolution") as mock_send_resolution:
+        with patch.object(
+            app_module, "resolve_incident_with_alerts", return_value=True
+        ) as mock_resolve:
             resp = app_client.post(
                 f"/admin/update/{inc_id}",
                 data={
@@ -326,8 +336,7 @@ class TestAdminOperations:
                 },
             )
         assert resp.status_code == 302
-        assert mock_send_resolution.called
-        assert mock_send_resolution.call_args.kwargs["jira_key"] == "OPS-123"
+        assert mock_resolve.called
 
 
 class TestGMTFilter:
@@ -390,6 +399,25 @@ class TestIncidentAutoDetection:
 
         active = database.get_active_incident_for_service("RecoverSvc")
         assert active is None  # Should be resolved
+
+    def test_skipped_check_does_not_record_or_incident(self):
+        from app import run_service_check
+
+        svc = {"name": "VpnSvc", "type": "dns", "hostname": "private.example"}
+        with __import__("unittest.mock", fromlist=["patch"]).patch(
+            "app.run_check"
+        ) as mock:
+            mock.return_value = (
+                "skip",
+                None,
+                "Skipped: requires env ON_PRIVATE_NETWORK",
+            )
+            run_service_check(svc)
+
+        latest = database.get_latest_status(["VpnSvc"])
+        assert latest["VpnSvc"] is None
+        active = database.get_active_incident_for_service("VpnSvc")
+        assert active is None
 
 
 class TestIncidentSeverity:
@@ -510,17 +538,21 @@ class TestBuildServiceData:
                     None if status == "up" else "error",
                 )
 
-    def test_bars_gray_with_insufficient_history(self):
-        """Services with < 3 days of data should have all uptime_pct = None."""
+    def test_bars_gray_outside_coverage(self):
+        """Days outside coverage should have uptime_pct = None (grey)."""
         from app import build_service_data
 
         database.record_check("NewSvc", "up", 10.0, None)
         latest = database.get_latest_status(["NewSvc"])
+        # No coverage passed — all days except those with check data are grey
         data, _ = build_service_data([{"name": "NewSvc", "interval": 60}], latest)
         svc = data[0]
-        # All bars should be None (gray) because < 3 days of history
-        pcts = [d["uptime_pct"] for d in svc["days"]]
-        assert all(p is None for p in pcts)
+        # Today's bar should have data (from the check), the rest grey
+        today_bar = svc["days"][-1]  # most recent day
+        assert today_bar["uptime_pct"] == 100.0
+        # Earlier days without coverage should be grey
+        grey_days = [d for d in svc["days"][:-1] if d["uptime_pct"] is None]
+        assert len(grey_days) == 89  # all 89 prior days are grey
 
     def test_no_data_status_when_no_checks(self):
         """Services with no check data at all should show 'no_data' status."""
@@ -530,14 +562,14 @@ class TestBuildServiceData:
         data, _ = build_service_data([{"name": "NeverChecked", "interval": 60}], latest)
         assert data[0]["status"] == "no_data"
 
-    def test_no_data_status_with_insufficient_history(self):
-        """Services with data but < 3 days should show 'no_data' status."""
+    def test_operational_status_with_check_data(self):
+        """Services with check data showing 'up' should be operational."""
         from app import build_service_data
 
         database.record_check("FreshSvc", "up", 10.0, None)
         latest = database.get_latest_status(["FreshSvc"])
         data, _ = build_service_data([{"name": "FreshSvc", "interval": 60}], latest)
-        assert data[0]["status"] == "no_data"
+        assert data[0]["status"] == "operational"
 
     def test_bars_colored_with_enough_history(self):
         """Services with >= 3 days and incident coverage should show colored bars."""
@@ -578,6 +610,28 @@ class TestBuildServiceData:
         today_bar = data[0]["days"][-1]
         assert len(today_bar["incidents"]) == 1
         assert today_bar["incidents"][0]["title"] == "Test incident"
+
+    def test_coverage_turns_no_data_days_green(self):
+        """Days within feed coverage but without check data should be green."""
+        from app import build_service_data
+
+        latest = database.get_latest_status(["CovSvc"])
+        # Coverage starts 10 days ago — those 10 days should be green, rest grey
+        from datetime import timedelta
+
+        coverage_start = (
+            (datetime.now(timezone.utc) - timedelta(days=10)).date().isoformat()
+        )
+        data, _ = build_service_data(
+            [{"name": "CovSvc", "interval": 60}],
+            latest,
+            coverage={"CovSvc": coverage_start},
+        )
+        svc = data[0]
+        green = [d for d in svc["days"] if d["uptime_pct"] is not None]
+        grey = [d for d in svc["days"] if d["uptime_pct"] is None]
+        assert len(green) == 11  # 10 days ago through today = 11 days
+        assert len(grey) == 79  # rest are grey (no coverage)
 
     def test_badge_operational_when_all_up(self):
         from app import build_service_data
@@ -844,7 +898,9 @@ class TestBarCoverage:
             assert d["uptime_pct"] is not None, (
                 f"Day {d['date']} should be green (check data exists)"
             )
-        assert days[-31]["uptime_pct"] is None, "Day before check history should be grey"
+        assert days[-31]["uptime_pct"] is None, (
+            "Day before check history should be grey"
+        )
 
     # --- Incident isolation: no cross-service leaks ---
 

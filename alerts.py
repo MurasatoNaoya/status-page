@@ -209,11 +209,7 @@ def _resolve_jira_ticket(incident_id, message, jira_key=None):
             "closed",
         }
         target = next(
-            (
-                t
-                for t in transitions
-                if t.get("name", "").strip().lower() in preferred
-            ),
+            (t for t in transitions if t.get("name", "").strip().lower() in preferred),
             None,
         )
         if target:

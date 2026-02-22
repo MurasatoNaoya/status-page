@@ -70,6 +70,10 @@ status_feeds:
 dns_bar:
   name: "DNS Resolution"
   interval: 60
+  # Optional: gate private-network targets behind an env var so they are
+  # skipped (not marked down) when off VPN.
+  # Example:
+  #   requires_env: "ON_PRIVATE_NETWORK"
   targets:
     - hostname: "uksouth.blob.core.windows.net"
       label: "Azure Blob"
@@ -92,8 +96,10 @@ dns_bar:
     # --- Uncomment for private network targets ---
     # - hostname: "mydb.privatelink.database.windows.net"
     #   label: "DB Private Link"
+    #   requires_env: "ON_PRIVATE_NETWORK"
     # - hostname: "myaks.uksouth.azmk8s.io"
     #   label: "Your AKS Cluster"
+    #   requires_env: "ON_PRIVATE_NETWORK"
 
 services: []
   # - name: "Example API"
@@ -225,23 +231,27 @@ groups:
       # - name: "App DB (Private Link)"
       #   type: dns
       #   hostname: "mydb.privatelink.database.windows.net"
+      #   requires_env: "ON_PRIVATE_NETWORK"
       #   interval: 60
 
       # - name: "Storage (Private Endpoint)"
       #   type: dns
       #   hostname: "mystorage.privatelink.blob.core.windows.net"
+      #   requires_env: "ON_PRIVATE_NETWORK"
       #   interval: 60
 
       # - name: "Your AKS Cluster"
       #   type: tcp
       #   host: "myaks.uksouth.azmk8s.io"
       #   port: 443
+      #   requires_env: "ON_PRIVATE_NETWORK"
       #   interval: 60
 
       # - name: "Your Private ACR"
       #   type: http
       #   url: "https://yourregistry.azurecr.io/v2/"
       #   expected_status: 401
+      #   requires_env: "ON_PRIVATE_NETWORK"
       #   interval: 60
 
   - name: "GitHub"

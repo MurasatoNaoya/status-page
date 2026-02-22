@@ -198,16 +198,16 @@
         <div class="incidents-section">
             <h2>Past Incidents</h2>
             <div class="incident-filters" id="incidentFilters">
-                <button class="filter-pill active" data-filter="all" onclick="toggleFilter(this)">All</button>
-                <button class="filter-pill" data-filter="azure" onclick="toggleFilter(this)">Azure</button>
-                <button class="filter-pill" data-filter="github" onclick="toggleFilter(this)">GitHub</button>
-                <button class="filter-pill" data-filter="registries" onclick="toggleFilter(this)">Container Registries</button>
-                <button class="filter-pill" data-filter="dns" onclick="toggleFilter(this)">DNS</button>
-                <button class="filter-pill" data-filter="platform" onclick="toggleFilter(this)">Platform</button>
+                <button class="filter-pill active" data-filter="all">All</button>
+                <button class="filter-pill" data-filter="azure">Azure</button>
+                <button class="filter-pill" data-filter="github">GitHub</button>
+                <button class="filter-pill" data-filter="registries">Container Registries</button>
+                <button class="filter-pill" data-filter="dns">DNS</button>
+                <button class="filter-pill" data-filter="platform">Platform</button>
                 <span class="filter-divider"></span>
-                <button class="filter-pill filter-impact-minor" data-filter="minor" data-filter-type="impact" onclick="toggleFilter(this)">Minor</button>
-                <button class="filter-pill filter-impact-partial" data-filter="partial" data-filter-type="impact" onclick="toggleFilter(this)">Partial</button>
-                <button class="filter-pill filter-impact-major" data-filter="major" data-filter-type="impact" onclick="toggleFilter(this)">Major</button>
+                <button class="filter-pill filter-impact-minor" data-filter="minor" data-filter-type="impact">Minor</button>
+                <button class="filter-pill filter-impact-partial" data-filter="partial" data-filter-type="impact">Partial</button>
+                <button class="filter-pill filter-impact-major" data-filter="major" data-filter-type="impact">Major</button>
             </div>
             {% if incidents_by_date %}
                 {% for date_label, date_incidents in incidents_by_date.items() %}
@@ -233,7 +233,7 @@
                                 {% for update in incident.updates %}
                                 <div class="incident-update">
                                     <span class="incident-update-status {{ update.status }}">{{ update.status }}</span>{% set clean_msg = update.message | replace('<br />', ' ') | replace('<br>', ' ') | striptags %}{%
-                                    if clean_msg|length > 400 %} - <span class="incident-msg-short">{{ clean_msg[:300] }}<button class="incident-expand" onclick="this.parentElement.style.display='none';this.parentElement.nextElementSibling.style.display='inline'">...</button></span><span class="incident-msg-full" style="display:none">{{ clean_msg }}</span>{%
+                                    if clean_msg|length > 400 %} - <span class="incident-msg-short">{{ clean_msg[:300] }}<button class="incident-expand">...</button></span><span class="incident-msg-full" style="display:none">{{ clean_msg }}</span>{%
                                     else %} - {{ clean_msg }}{%
                                     endif %}
                                     <div class="incident-time"><time class="local-time" datetime="{{ update.created_at }}">{{ update.created_at | gmt }}</time></div>
@@ -261,7 +261,7 @@
     </div>
     <div id="shared-tip"></div>
     <script src="{{ url_for('static', filename='theme.js') }}"></script>
-    <script>
+    <script nonce="{{ csp_nonce() }}">
     // Incident filters — category and impact work independently
     var activeCategoryFilter = 'all';
     var activeImpactFilter = null;
@@ -336,6 +336,12 @@
             noResults.style.display = (!showAll && !anyVisible) ? '' : 'none';
         }
     }
+
+    document.querySelectorAll('.filter-pill').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            toggleFilter(btn);
+        });
+    });
 
     // Convert all timestamps to the viewer's local timezone
     document.querySelectorAll('.local-time').forEach(function(el) {
@@ -516,6 +522,16 @@
 
         // Click-to-scroll (delegated)
         document.addEventListener('click', function(e) {
+            var exp = e.target.closest('.incident-expand');
+            if (exp) {
+                var shortEl = exp.closest('.incident-msg-short');
+                if (shortEl) {
+                    shortEl.style.display = 'none';
+                    var full = shortEl.nextElementSibling;
+                    if (full) full.style.display = 'inline';
+                }
+                return;
+            }
             var bar = e.target.closest('.uptime-day[data-incident-id]');
             if (!bar) return;
             e.stopPropagation();

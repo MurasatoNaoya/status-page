@@ -6,7 +6,17 @@ import time
 import requests
 
 
+def _skip_if_env_missing(item):
+    required_env = item.get("requires_env")
+    if required_env and not os.environ.get(required_env):
+        return "skip", None, f"Skipped: requires env {required_env}"
+    return None
+
+
 def check_http(service):
+    skipped = _skip_if_env_missing(service)
+    if skipped:
+        return skipped
     url = service["url"]
     if not url.startswith(("http://", "https://")):
         return "down", None, f"Invalid URL scheme: {url}"
@@ -33,6 +43,9 @@ def check_http(service):
 
 
 def check_tcp(service):
+    skipped = _skip_if_env_missing(service)
+    if skipped:
+        return skipped
     host = service["host"]
     port = service["port"]
     timeout = service.get("timeout", 5)
@@ -47,6 +60,9 @@ def check_tcp(service):
 
 
 def check_dns(service):
+    skipped = _skip_if_env_missing(service)
+    if skipped:
+        return skipped
     hostname = service["hostname"]
     try:
         start = time.monotonic()
@@ -61,6 +77,9 @@ def check_dns(service):
 # read-only file. shell=True is NOT used — shlex.split prevents injection.
 # If config.yaml is writable by untrusted parties, this is an RCE vector.
 def check_script(service):
+    skipped = _skip_if_env_missing(service)
+    if skipped:
+        return skipped
     command = service["command"]
     timeout = service.get("timeout", 30)
     try:
@@ -90,6 +109,18 @@ def check_dns_bar(targets):
     for target in targets:
         hostname = target["hostname"]
         label = target.get("label", hostname)
+        skipped = _skip_if_env_missing(target)
+        if skipped:
+            results.append(
+                {
+                    "label": label,
+                    "hostname": hostname,
+                    "status": "skip",
+                    "ms": None,
+                    "error": skipped[2],
+                }
+            )
+            continue
         try:
             start = time.monotonic()
             socket.getaddrinfo(hostname, None)

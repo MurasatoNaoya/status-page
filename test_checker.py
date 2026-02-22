@@ -14,6 +14,17 @@ from checker import (
 
 
 class TestCheckHTTP:
+    def test_skips_when_required_env_missing(self):
+        status, ms, err = check_http(
+            {
+                "url": "https://example.com",
+                "requires_env": "ON_PRIVATE_NETWORK",
+            }
+        )
+        assert status == "skip"
+        assert ms is None
+        assert "requires env ON_PRIVATE_NETWORK" in err
+
     def test_successful_check(self):
         with patch("checker.requests.get") as mock_get:
             mock_resp = MagicMock()
@@ -88,6 +99,14 @@ class TestCheckHTTP:
 
 
 class TestCheckTCP:
+    def test_skips_when_required_env_missing(self):
+        status, ms, err = check_tcp(
+            {"host": "localhost", "port": 5555, "requires_env": "ON_PRIVATE_NETWORK"}
+        )
+        assert status == "skip"
+        assert ms is None
+        assert "requires env ON_PRIVATE_NETWORK" in err
+
     def test_successful_connection(self):
         with patch("checker.socket.create_connection") as mock_conn:
             mock_sock = MagicMock()
@@ -105,6 +124,14 @@ class TestCheckTCP:
 
 
 class TestCheckDNS:
+    def test_skips_when_required_env_missing(self):
+        status, ms, err = check_dns(
+            {"hostname": "example.com", "requires_env": "ON_PRIVATE_NETWORK"}
+        )
+        assert status == "skip"
+        assert ms is None
+        assert "requires env ON_PRIVATE_NETWORK" in err
+
     def test_successful_resolution(self):
         with patch("checker.socket.getaddrinfo") as mock_dns:
             mock_dns.return_value = [("AF_INET", None, None, None, ("1.2.3.4", 0))]
@@ -137,6 +164,20 @@ class TestCheckScript:
 
 
 class TestCheckDNSBar:
+    def test_skips_targets_when_required_env_missing(self):
+        results = check_dns_bar(
+            [
+                {
+                    "hostname": "private.example",
+                    "label": "Private",
+                    "requires_env": "ON_PRIVATE_NETWORK",
+                }
+            ]
+        )
+        assert len(results) == 1
+        assert results[0]["status"] == "skip"
+        assert "requires env ON_PRIVATE_NETWORK" in (results[0]["error"] or "")
+
     def test_all_targets_up(self):
         with patch("checker.socket.getaddrinfo") as mock_dns:
             mock_dns.return_value = [("AF_INET", None, None, None, ("1.2.3.4", 0))]

@@ -12,6 +12,7 @@ import yaml
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask import (
     Flask,
+    g,
     jsonify,
     render_template,
     request,
@@ -21,21 +22,24 @@ from flask import (
     flash,
 )
 
-from alerts import send_alerts, send_resolution
 from checker import check_dns_bar, run_check
+from config_schema import validate_config
 from feed_importer import poll_status_feed
+from incident_service import declare_incident_with_alerts, resolve_incident_with_alerts
+from telemetry import incr, observe, snapshot, timed_call
 from database import (
     backfill_check_gaps,
     cleanup_old_checks,
     cleanup_orphan_services,
     close_request_db,
     create_incident,
+    get_check_coverage_start,
     get_db,
     get_feed_incident_stats,
+    get_incident_coverage_start,
     get_active_incident_for_service,
     get_active_incidents,
     get_incidents_by_day,
-    get_incident,
     get_latest_status,
     get_recent_checks,
     get_recent_incidents,
@@ -43,7 +47,6 @@ from database import (
     get_uptime_percentage,
     init_db,
     record_check,
-    set_incident_jira_key,
     update_incident,
 )
 
@@ -114,13 +117,26 @@ app.jinja_env.globals["csrf_token"] = _get_csrf_token
 app.teardown_appcontext(close_request_db)
 
 
+@app.before_request
+def _set_csp_nonce():
+    g._csp_nonce = secrets.token_urlsafe(16)
+
+
+def _csp_nonce():
+    return getattr(g, "_csp_nonce", "")
+
+
+app.jinja_env.globals["csp_nonce"] = _csp_nonce
+
+
 @app.after_request
 def set_security_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
+    nonce = getattr(g, "_csp_nonce", "")
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; style-src 'self' 'unsafe-inline'; "
-        "script-src 'self' 'unsafe-inline'; img-src 'self' data:"
+        f"script-src 'self' 'nonce-{nonce}'; img-src 'self' data:"
     )
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
@@ -173,7 +189,8 @@ _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 def load_config(path="config.yaml"):
     config_path = os.path.join(_APP_DIR, path) if not os.path.isabs(path) else path
     with open(config_path) as f:
-        return yaml.safe_load(f)
+        loaded = yaml.safe_load(f) or {}
+    return validate_config(loaded)
 
 
 CONFIG = load_config()
@@ -186,7 +203,15 @@ STATUS_FEEDS = CONFIG.get("status_feeds") or []
 
 def run_service_check(service):
     status, response_time_ms, error = run_check(service)
+    if status == "skip":
+        logger.info("%s: skipped (%s)", service["name"], error or "no reason")
+        incr("checks.skipped")
+        return
     record_check(service["name"], status, response_time_ms, error)
+    incr("checks.total")
+    incr(f"checks.status.{status}")
+    if response_time_ms is not None:
+        observe("checks.response_time_ms", response_time_ms)
     level = logging.DEBUG if status == "up" else logging.WARNING
     logger.log(
         level,
@@ -220,7 +245,7 @@ def run_service_check(service):
 
         if consecutive_failures and len(recent) >= INCIDENT_THRESHOLD and not active:
             error_msg = error or "Service unavailable"
-            create_incident(
+            declare_incident_with_alerts(
                 title=error_msg,
                 impact="minor",
                 message=f"Automated detection: {error_msg}",
@@ -252,15 +277,25 @@ def run_dns_bar_check():
         return
     start = time.monotonic()
     results = check_dns_bar(DNS_BAR.get("targets", []))
+    active_results = [r for r in results if r["status"] != "skip"]
+    skipped = len(results) - len(active_results)
+    if not active_results:
+        logger.info("DNS bar check skipped: all targets gated by env")
+        incr("checks.skipped")
+        return
     elapsed_ms = (time.monotonic() - start) * 1000
 
-    total = len(results)
-    failed = [r for r in results if r["status"] != "up"]
+    total = len(active_results)
+    failed = [r for r in active_results if r["status"] != "up"]
     failed_count = len(failed)
 
     name = DNS_BAR.get("name", "DNS Resolution")
     if failed_count == 0:
-        record_check(name, "up", elapsed_ms, None)
+        msg = None if skipped == 0 else f"{skipped} target(s) skipped by env gating"
+        record_check(name, "up", elapsed_ms, msg)
+        incr("checks.total")
+        incr("checks.status.up")
+        observe("checks.response_time_ms", elapsed_ms)
         # Auto-resolve DNS incident if active
         active = get_active_incident_for_service(name)
         if active:
@@ -273,7 +308,12 @@ def run_dns_bar_check():
     else:
         failed_labels = ", ".join(r["label"] for r in failed)
         error_msg = f"{failed_count}/{total} failed: {failed_labels}"
+        if skipped:
+            error_msg += f" ({skipped} skipped)"
         record_check(name, "down", elapsed_ms, error_msg)
+        incr("checks.total")
+        incr("checks.status.down")
+        observe("checks.response_time_ms", elapsed_ms)
         # Auto-create DNS incident after consecutive failures
         recent = get_recent_checks(name, limit=INCIDENT_THRESHOLD)
         if (
@@ -281,7 +321,7 @@ def run_dns_bar_check():
             and all(r["status"] != "up" for r in recent)
             and not get_active_incident_for_service(name)
         ):
-            create_incident(
+            declare_incident_with_alerts(
                 title="DNS Resolution Failures Detected",
                 impact="partial",
                 message=f"Automated detection: {error_msg}",
@@ -295,7 +335,7 @@ def start_scheduler():
 
     def _run_with_app_context(fn, *args, **kwargs):
         with app.app_context():
-            return fn(*args, **kwargs)
+            return timed_call(f"jobs.{fn.__name__}.ms", fn, *args, **kwargs)
 
     # Schedule DNS bar checks
     if DNS_BAR:
@@ -410,13 +450,30 @@ def _filter_incidents_for_service(incidents_list, service_name):
     return result[:3]
 
 
-def build_service_data(svc_list, latest, incidents_by_day=None):
-    """Build template-ready data for a list of services."""
+def _get_feed_covered_services():
+    """Build a set of service names covered by at least one status feed."""
+    covered = set()
+    for feed in STATUS_FEEDS:
+        covered.update(feed.get("components", {}).values())
+        covered.update(feed.get("covered_services", []))
+    return covered
+
+
+def build_service_data(svc_list, latest, incidents_by_day=None, coverage=None):
+    """Build template-ready data for a list of services.
+
+    ``coverage`` maps service_name → earliest date string ('YYYY-MM-DD')
+    for which feed or check data exists.  Days within coverage that have
+    no incidents and no check data are shown as green (100% uptime).
+    Days before coverage are grey (no data).
+    """
     all_operational = True
     services_data = []
     today = datetime.now(timezone.utc).date()
     if incidents_by_day is None:
         incidents_by_day = {}
+    if coverage is None:
+        coverage = {}
 
     for svc in svc_list:
         name = svc["name"]
@@ -426,8 +483,7 @@ def build_service_data(svc_list, latest, incidents_by_day=None):
         interval_sec = svc.get("interval", 60)
 
         day_map = {d["day"]: d for d in uptime_days}
-        # Need at least 3 days of data before showing colored bars
-        has_history = len(uptime_days) >= 3
+        coverage_start = coverage.get(name)
         days_array = []
         for i in range(89, -1, -1):
             day = (today - timedelta(days=i)).isoformat()
@@ -437,11 +493,12 @@ def build_service_data(svc_list, latest, incidents_by_day=None):
                 incidents_by_day.get(day, []), name
             )
 
+            # Is this day within the coverage window?
+            in_coverage = coverage_start is not None and day >= coverage_start
+
             if day in day_map:
                 d = day_map[day]
-                raw_pct = 100.0 * d["up_count"] / d["total"] if d["total"] > 0 else None
-                # Never infer green from feed coverage alone: no checks means no data.
-                pct = raw_pct if has_history else None
+                pct = 100.0 * d["up_count"] / d["total"] if d["total"] > 0 else None
                 # Get unique errors for the day (deduplicated)
                 errors_raw = d.get("errors") or ""
                 errors = list(
@@ -468,10 +525,12 @@ def build_service_data(svc_list, latest, incidents_by_day=None):
                 )
             else:
                 severity = _incident_severity(day_incidents)
+                # Within coverage and no incidents → service was fine (green)
+                inferred_pct = 100.0 if (in_coverage and not day_incidents) else None
                 days_array.append(
                     {
                         "date": day,
-                        "uptime_pct": None,
+                        "uptime_pct": inferred_pct,
                         "down_count": 0,
                         "total": 0,
                         "errors": [],
@@ -501,7 +560,7 @@ def build_service_data(svc_list, latest, incidents_by_day=None):
                 # No active incident yet, but latest check failed — degraded
                 current_status = "degraded"
             all_operational = False
-        elif not has_history:
+        elif not uptime_days and not coverage_start:
             current_status = "no_data"
 
         services_data.append(
@@ -520,10 +579,10 @@ def build_service_data(svc_list, latest, incidents_by_day=None):
     return services_data, all_operational
 
 
-def _build_group_aggregate(group, latest, all_incidents_by_day):
+def _build_group_aggregate(group, latest, all_incidents_by_day, coverage=None):
     """Build aggregated data for a service group."""
     group_svcs, group_operational = build_service_data(
-        group.get("services", []), latest, all_incidents_by_day
+        group.get("services", []), latest, all_incidents_by_day, coverage=coverage
     )
 
     uptimes = [s["uptime_pct"] for s in group_svcs if s["uptime_pct"] is not None]
@@ -626,12 +685,53 @@ def index():
     all_svc_names = [s["name"] for s in all_services()]
     latest = get_latest_status(all_svc_names)
     all_incidents_by_day = get_incidents_by_day()
-    services_data, top_ok = build_service_data(SERVICES, latest, all_incidents_by_day)
+
+    # Build coverage map: service_name → earliest date string ('YYYY-MM-DD')
+    # A service is "covered" from the earliest date that any data source
+    # (health checks or feed incidents) can vouch for it.  Days within
+    # coverage that have no incidents are assumed operational (green).
+    incident_starts = get_incident_coverage_start()
+    check_starts = get_check_coverage_start(all_svc_names)
+
+    # For each feed, compute the oldest date its data covers so that
+    # services with zero incidents still get feed-based coverage.
+    feed_coverage_start = {}
+    for feed in STATUS_FEEDS:
+        svc_names_feed = set()
+        svc_names_feed.update(feed.get("components", {}).values())
+        svc_names_feed.update(feed.get("covered_services", []))
+        if not svc_names_feed:
+            continue
+        stats = get_feed_incident_stats(svc_names_feed)
+        oldest = stats["oldest"][:10] if stats.get("oldest") else None
+        if oldest:
+            for svc in svc_names_feed:
+                cur = feed_coverage_start.get(svc)
+                if cur is None or oldest < cur:
+                    feed_coverage_start[svc] = oldest
+
+    coverage = {}
+    for name in all_svc_names:
+        dates = []
+        if name in check_starts:
+            dates.append(check_starts[name])
+        if name in incident_starts:
+            dates.append(incident_starts[name])
+        if name in feed_coverage_start:
+            dates.append(feed_coverage_start[name])
+        if dates:
+            coverage[name] = min(dates)
+
+    services_data, top_ok = build_service_data(
+        SERVICES, latest, all_incidents_by_day, coverage=coverage
+    )
 
     groups_data = []
     groups_ok = True
     for group in GROUPS:
-        gdata = _build_group_aggregate(group, latest, all_incidents_by_day)
+        gdata = _build_group_aggregate(
+            group, latest, all_incidents_by_day, coverage=coverage
+        )
         if not gdata["operational"]:
             groups_ok = False
         groups_data.append(gdata)
@@ -646,7 +746,9 @@ def index():
         dns_name = DNS_BAR.get("name", "DNS Resolution")
         dns_svc_list = [{"name": dns_name, "interval": DNS_BAR.get("interval", 60)}]
         dns_latest = get_latest_status([dns_name])
-        dns_services, dns_ok = build_service_data(dns_svc_list, dns_latest, all_incidents_by_day)
+        dns_services, dns_ok = build_service_data(
+            dns_svc_list, dns_latest, all_incidents_by_day, coverage=coverage
+        )
         if not dns_ok:
             all_operational = False
         dns_bar_data = dns_services[0] if dns_services else None
@@ -744,6 +846,12 @@ def api_health():
             for name, info in latest.items()
         }
     )
+
+
+@app.route("/api/metrics")
+@login_required
+def api_metrics():
+    return jsonify(snapshot())
 
 
 # --- Admin panel ---
@@ -862,19 +970,9 @@ def admin_declare_incident():
     message = request.form.get("message", "Investigating the issue.").strip()[:2000]
     service = request.form.get("service") or None
 
-    incident_id = create_incident(
+    declare_incident_with_alerts(
         title=title, impact=impact, message=message, service_name=service
     )
-
-    jira_key = send_alerts(
-        incident_id=incident_id,
-        title=title,
-        impact=impact,
-        message=message,
-        service=service,
-    )
-    if jira_key:
-        set_incident_jira_key(incident_id, jira_key)
 
     flash(f"Incident declared: {title}")
     return redirect(url_for("admin_panel"))
@@ -891,21 +989,18 @@ def admin_update_incident(incident_id):
     if status not in _VALID_STATUSES:
         flash("Invalid status value.")
         return redirect(url_for("admin_panel"))
-    incident = get_incident(incident_id)
-    if not incident:
-        flash("Incident not found.")
-        return redirect(url_for("admin_panel"))
-    updated = update_incident(incident_id, status=status, message=message)
-    if not updated:
-        flash("Incident not found.")
-        return redirect(url_for("admin_panel"))
-
     if status == "resolved":
-        send_resolution(
-            incident_id=incident_id,
-            message=message,
-            jira_key=incident.get("jira_key"),
+        resolved = resolve_incident_with_alerts(
+            incident_id=incident_id, message=message
         )
+        if not resolved:
+            flash("Incident not found.")
+            return redirect(url_for("admin_panel"))
+    else:
+        updated = update_incident(incident_id, status=status, message=message)
+        if not updated:
+            flash("Incident not found.")
+            return redirect(url_for("admin_panel"))
 
     flash(f"Incident updated to: {status}")
     return redirect(url_for("admin_panel"))
@@ -930,9 +1025,11 @@ def admin_backfill():
         try:
             poll_status_feed(feed)
             succeeded_feeds += 1
+            incr("backfill.feed.success")
         except Exception as e:
             logger.error("Backfill failed for feed %s: %s", feed.get("name"), e)
             failed_feeds.append(feed.get("name", "unknown"))
+            incr("backfill.feed.error")
 
     # Count incidents after the backfill
     with get_db() as db:

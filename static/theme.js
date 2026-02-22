@@ -26,3 +26,10 @@ function toggleTheme() {
         document.documentElement.setAttribute('data-theme', 'dark');
     }
 })();
+
+document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.theme-toggle');
+    if (!btn) return;
+    e.preventDefault();
+    toggleTheme();
+});

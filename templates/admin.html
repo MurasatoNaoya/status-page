@@ -248,7 +248,7 @@
         <!-- Declare Incident -->
         <div class="declare-section">
             <h2>Declare Incident</h2>
-            <form method="POST" action="{{ url_for('admin_declare_incident') }}" onsubmit="return confirm('This will alert the team and create a Jira ticket. Continue?')">
+            <form method="POST" action="{{ url_for('admin_declare_incident') }}" data-confirm="This will alert the team and create a Jira ticket. Continue?">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                 <div class="form-row">
                     <div class="form-group">
@@ -326,7 +326,7 @@
                 Pull real historical incident data from public status feeds (GitHub, Azure, Docker, Red Hat).
                 Only imports real incidents &mdash; does not create synthetic data. Existing data is preserved.
             </p>
-            <form method="POST" action="{{ url_for('admin_backfill') }}" onsubmit="return confirm('This will import historical incidents from public status feeds. Existing data will not be affected. Continue?')">
+            <form method="POST" action="{{ url_for('admin_backfill') }}" data-confirm="This will import historical incidents from public status feeds. Existing data will not be affected. Continue?">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn-backfill">Backfill from Public Feeds</button>
             </form>
@@ -388,5 +388,6 @@
         </footer>
     </div>
     <script src="{{ url_for('static', filename='theme.js') }}"></script>
+    <script src="{{ url_for('static', filename='admin.js') }}"></script>
 </body>
 </html>

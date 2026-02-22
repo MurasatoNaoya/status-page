@@ -95,10 +95,8 @@ class TestThemeToggle:
         page.goto(live_server)
         light_bg = page.evaluate("getComputedStyle(document.body).backgroundColor")
         page.locator(".theme-toggle").click()
-        # Wait for CSS transition to complete using auto-retry
-        page.wait_for_function(
-            f"getComputedStyle(document.body).backgroundColor !== '{light_bg}'"
-        )
+        # Wait for the data-theme attribute to change, then check color
+        expect(page.locator("html")).to_have_attribute("data-theme", "dark")
         dark_bg = page.evaluate("getComputedStyle(document.body).backgroundColor")
         assert light_bg != dark_bg, "Background color should change in dark mode"
 
@@ -112,10 +110,8 @@ class TestThemeToggle:
     ):
         admin_session.locator(".theme-toggle").click()
         expect(admin_session.locator("html")).to_have_attribute("data-theme", "dark")
-        # Wait for CSS transition to finish before checking computed style
-        admin_session.wait_for_function(
-            "getComputedStyle(document.querySelector('.form-group input')).color !== 'rgb(0, 0, 0)'"
-        )
+        # Allow CSS transition to settle, then check computed style
+        admin_session.wait_for_timeout(300)
         color = admin_session.evaluate(
             "getComputedStyle(document.querySelector('.form-group input')).color"
         )

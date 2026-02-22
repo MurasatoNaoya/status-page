@@ -280,7 +280,9 @@ def get_incident_downtime_hours(service_name, days=90):
                 merged[-1] = (last_start, max(last_end, end))
             else:
                 merged.append((start, end))
-        total_hours += sum((end - start).total_seconds() / 3600.0 for start, end in merged)
+        total_hours += sum(
+            (end - start).total_seconds() / 3600.0 for start, end in merged
+        )
     return total_hours
 
 
@@ -462,7 +464,9 @@ def get_incident_by_external_id(external_id):
 def get_incident(incident_id):
     """Get a single incident by numeric ID."""
     with get_query_db() as db:
-        row = db.execute("SELECT * FROM incidents WHERE id = ?", (incident_id,)).fetchone()
+        row = db.execute(
+            "SELECT * FROM incidents WHERE id = ?", (incident_id,)
+        ).fetchone()
     return dict(row) if row else None
 
 

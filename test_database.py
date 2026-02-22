@@ -292,7 +292,6 @@ class TestCleanupOrphanServices:
         assert deleted >= 1
 
 
-
 class TestGetIncidentsByDay:
     """Test get_incidents_by_day — maps incidents to each day they span."""
 

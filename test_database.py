@@ -76,6 +76,30 @@ class TestIncidentDowntimeHours:
         hours = database.get_incident_downtime_hours("EmptySvc")
         assert hours == 0.0
 
+    def test_overlapping_incidents_are_not_double_counted(self):
+        database.create_incident(
+            title="Overlap A",
+            impact="partial",
+            message="down",
+            service_name="OverlapSvc",
+            external_id="dt-overlap-1",
+            created_at="2025-01-01T10:00:00Z",
+            resolved_at="2025-01-01T12:00:00Z",
+            status="resolved",
+        )
+        database.create_incident(
+            title="Overlap B",
+            impact="partial",
+            message="down",
+            service_name="OverlapSvc",
+            external_id="dt-overlap-2",
+            created_at="2025-01-01T11:00:00Z",
+            resolved_at="2025-01-01T13:00:00Z",
+            status="resolved",
+        )
+        hours = database.get_incident_downtime_hours("OverlapSvc", days=3650)
+        assert hours == 3.0
+
 
 class TestUptimeCalculation:
     def test_uptime_percentage_requires_minimum_checks(self):
@@ -166,6 +190,12 @@ class TestIncidents:
         )
         database.update_incident(inc_id, status="resolved", message="done")
         assert database.get_active_incident_for_service("TempSvc") is None
+
+    def test_update_incident_returns_false_when_missing(self):
+        ok = database.update_incident(
+            999999, status="resolved", message="does-not-exist"
+        )
+        assert ok is False
 
     def test_external_id_lookup(self):
         database.create_incident(

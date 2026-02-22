@@ -13,6 +13,8 @@ def _make_connection():
     """Create a new SQLite connection with standard settings."""
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
+    # Enforce relational integrity for incident_updates -> incidents.
+    conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
 
@@ -230,14 +232,14 @@ def get_incident_downtime_hours(service_name, days=90):
         (service_name, since),
     ).fetchall()
     total_hours = 0.0
+    intervals = []
     for row in rows:
         if row["created_at"] and row["resolved_at"]:
             try:
                 start = datetime.fromisoformat(row["created_at"].replace("Z", "+00:00"))
                 end = datetime.fromisoformat(row["resolved_at"].replace("Z", "+00:00"))
-                hours = (end - start).total_seconds() / 3600.0
-                if hours > 0:
-                    total_hours += hours
+                if end > start:
+                    intervals.append((start, end))
                     continue
             except (ValueError, TypeError):
                 pass
@@ -249,6 +251,16 @@ def get_incident_downtime_hours(service_name, days=90):
             total_hours += 2.0
         else:
             total_hours += 1.0
+    if intervals:
+        intervals.sort(key=lambda x: x[0])
+        merged = [intervals[0]]
+        for start, end in intervals[1:]:
+            last_start, last_end = merged[-1]
+            if start <= last_end:
+                merged[-1] = (last_start, max(last_end, end))
+            else:
+                merged.append((start, end))
+        total_hours += sum((end - start).total_seconds() / 3600.0 for start, end in merged)
     return total_hours
 
 
@@ -463,6 +475,12 @@ def create_incident(
 
 def update_incident(incident_id, status, message, created_at=None, resolved_at=None):
     with get_db() as db:
+        exists = db.execute(
+            "SELECT 1 FROM incidents WHERE id = ?", (incident_id,)
+        ).fetchone()
+        if not exists:
+            return False
+
         db.execute(
             "INSERT INTO incident_updates (incident_id, status, message, created_at) VALUES (?, ?, ?, COALESCE(?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')))",
             (incident_id, status, message, created_at),
@@ -481,6 +499,7 @@ def update_incident(incident_id, status, message, created_at=None, resolved_at=N
                     "UPDATE incidents SET resolved_at = COALESCE(resolved_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')) WHERE id = ?",
                     (incident_id,),
                 )
+        return True
 
 
 _VALID_IMPACTS = {"major", "partial", "minor", "none"}
@@ -547,10 +566,24 @@ def cleanup_orphan_services(valid_service_names):
         if not valid:
             # Nothing is valid — delete everything
             deleted += db.execute("DELETE FROM check_results").rowcount
+            db.execute("DELETE FROM incident_updates")
             deleted += db.execute("DELETE FROM incidents").rowcount
         else:
             placeholders = ",".join("?" for _ in valid)
             params = list(valid)
+            orphan_ids = [
+                r[0]
+                for r in db.execute(
+                    f"SELECT id FROM incidents WHERE service_name IS NOT NULL AND service_name NOT IN ({placeholders})",
+                    params,
+                ).fetchall()
+            ]
+            if orphan_ids:
+                upd_placeholders = ",".join("?" for _ in orphan_ids)
+                db.execute(
+                    f"DELETE FROM incident_updates WHERE incident_id IN ({upd_placeholders})",
+                    orphan_ids,
+                )
             deleted += db.execute(
                 f"DELETE FROM check_results WHERE service_name NOT IN ({placeholders})",
                 params,

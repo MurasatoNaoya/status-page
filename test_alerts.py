@@ -92,6 +92,8 @@ class TestJira:
         payload = mock_post.call_args[1]["json"]
         assert payload["fields"]["project"]["key"] == "OPS"
         assert payload["fields"]["priority"]["name"] == "Highest"
+        assert "status-page-incident" in payload["fields"]["labels"]
+        assert "incident-1" in payload["fields"]["labels"]
 
     @patch.dict(
         "os.environ",
@@ -205,3 +207,38 @@ class TestSendResolution:
         # Should fetch transitions only (no JQL search)
         assert mock_get.call_count == 1
         assert "/transitions" in mock_get.call_args.args[0]
+
+    @patch.dict(
+        "os.environ",
+        {
+            "JIRA_URL": "https://company.atlassian.net",
+            "JIRA_PROJECT": "OPS",
+            "JIRA_USER": "user@co.com",
+            "JIRA_TOKEN": "token123",
+        },
+    )
+    @patch("alerts.requests.get")
+    @patch("alerts.requests.post")
+    def test_resolution_falls_back_to_legacy_jql_when_labels_missing(
+        self, mock_post, mock_get
+    ):
+        mock_get.side_effect = [
+            MagicMock(json=lambda: {"issues": []}, raise_for_status=lambda: None),
+            MagicMock(
+                json=lambda: {"issues": [{"key": "OPS-42"}]},
+                raise_for_status=lambda: None,
+            ),
+            MagicMock(
+                json=lambda: {"transitions": [{"id": "31", "name": "Done"}]},
+                raise_for_status=lambda: None,
+            ),
+        ]
+        mock_post.return_value.raise_for_status = lambda: None
+
+        alerts.send_resolution(42, "Service recovered")
+
+        assert mock_get.call_count == 3
+        first_jql = mock_get.call_args_list[0].kwargs["params"]["jql"]
+        second_jql = mock_get.call_args_list[1].kwargs["params"]["jql"]
+        assert "labels = \"status-page-incident\"" in first_jql
+        assert "description" in second_jql

@@ -119,8 +119,6 @@ def init_db():
             );
             CREATE INDEX IF NOT EXISTS idx_incident_updates_incident
                 ON incident_updates(incident_id);
-            CREATE INDEX IF NOT EXISTS idx_incidents_external_id
-                ON incidents(external_id);
             CREATE INDEX IF NOT EXISTS idx_incidents_service_name
                 ON incidents(service_name, resolved_at);
         """)
@@ -157,6 +155,71 @@ def init_db():
             db.execute(
                 "INSERT INTO schema_migrations (migration) VALUES ('rename_impact_levels')"
             )
+        row = db.execute(
+            "SELECT 1 FROM schema_migrations WHERE migration = 'dedupe_external_id_before_unique'"
+        ).fetchone()
+        if not row:
+            _dedupe_incidents_by_external_id(db)
+            db.execute(
+                "INSERT INTO schema_migrations (migration) VALUES ('dedupe_external_id_before_unique')"
+            )
+        row = db.execute(
+            "SELECT 1 FROM schema_migrations WHERE migration = 'drop_non_unique_external_id_index'"
+        ).fetchone()
+        if not row:
+            db.execute("DROP INDEX IF EXISTS idx_incidents_external_id")
+            db.execute(
+                "INSERT INTO schema_migrations (migration) VALUES ('drop_non_unique_external_id_index')"
+            )
+        db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_incidents_external_id_unique "
+            "ON incidents(external_id) WHERE external_id IS NOT NULL"
+        )
+
+
+def _dedupe_incidents_by_external_id(db):
+    """Collapse duplicate external_id rows before enforcing uniqueness.
+
+    Keeps the newest row (highest id) for each external_id and removes older
+    duplicates plus their incident_updates.
+    """
+    duplicates = db.execute(
+        """
+        SELECT external_id
+        FROM incidents
+        WHERE external_id IS NOT NULL
+        GROUP BY external_id
+        HAVING COUNT(*) > 1
+        """
+    ).fetchall()
+    for row in duplicates:
+        ext_id = row["external_id"]
+        ids = [
+            r["id"]
+            for r in db.execute(
+                "SELECT id FROM incidents WHERE external_id = ? ORDER BY id ASC",
+                (ext_id,),
+            ).fetchall()
+        ]
+        if len(ids) <= 1:
+            continue
+        keep_id = ids[-1]
+        remove_ids = ids[:-1]
+        placeholders = ",".join("?" for _ in remove_ids)
+        db.execute(
+            f"DELETE FROM incident_updates WHERE incident_id IN ({placeholders})",
+            remove_ids,
+        )
+        db.execute(
+            f"DELETE FROM incidents WHERE id IN ({placeholders})",
+            remove_ids,
+        )
+        logger.warning(
+            "Deduped %d duplicate incidents for external_id=%s (kept id=%d)",
+            len(remove_ids),
+            ext_id,
+            keep_id,
+        )
 
 
 def record_check(service_name, status, response_time_ms, error_message=None):
@@ -194,14 +257,20 @@ def get_latest_status(service_names):
     with get_query_db() as db:
         placeholders = ",".join("?" for _ in service_names)
         rows = db.execute(
-            f"""SELECT cr.* FROM check_results cr
-                INNER JOIN (
-                    SELECT service_name, MAX(checked_at) as max_at
-                    FROM check_results
-                    WHERE service_name IN ({placeholders})
-                    GROUP BY service_name
-                ) latest ON cr.service_name = latest.service_name
-                           AND cr.checked_at = latest.max_at""",
+            f"""
+            SELECT service_name, status, response_time_ms, error_message, checked_at, id
+            FROM (
+                SELECT
+                    cr.*,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY cr.service_name
+                        ORDER BY cr.checked_at DESC, cr.id DESC
+                    ) AS rn
+                FROM check_results cr
+                WHERE cr.service_name IN ({placeholders})
+            ) ranked
+            WHERE rn = 1
+            """,
             list(service_names),
         ).fetchall()
     results = {name: None for name in service_names}

@@ -33,8 +33,7 @@
         <header>
             <div class="header-row">
                 <div>
-                    <h1>{{ page.get('title', 'Status') }}</h1>
-                    <p>{{ page.get('description', 'Service Status') }}</p>
+                    <h1><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="28" height="28" style="vertical-align: -4px; margin-right: 8px;"><path d="M32 6L4 20l28 14 28-14Z" fill="#E04343"/><path d="M4 26l28 14 28-14" fill="none" stroke="#E86235" stroke-width="4.5" stroke-linejoin="round"/><path d="M4 36l28 14 28-14" fill="none" stroke="#FAA72A" stroke-width="4.5" stroke-linejoin="round"/><path d="M4 46l28 14 28-14" fill="none" stroke="#76AD2A" stroke-width="4.5" stroke-linejoin="round"/></svg>{{ page.get('title', 'Status') }}</h1>
                 </div>
                 <div class="header-actions">
                     <a href="{{ url_for('admin_panel') }}" class="admin-link">Admin Panel</a>

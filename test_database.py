@@ -1,8 +1,10 @@
 """Tests for database.py — the data layer."""
 
 from datetime import datetime, timedelta, timezone
+import sqlite3
 
 import database
+import pytest
 
 
 class TestRecordAndQuery:
@@ -28,6 +30,19 @@ class TestRecordAndQuery:
         database.record_check("Svc", "up", 10.0, None)
         latest = database.get_latest_status(["Svc"])
         assert latest["Svc"]["status"] == "up"
+
+    def test_latest_status_tie_breaks_by_id(self):
+        with database.get_db() as db:
+            db.execute(
+                "INSERT INTO check_results (service_name, status, response_time_ms, checked_at) VALUES (?, ?, ?, ?)",
+                ("SvcTie", "down", None, "2026-02-22T12:00:00Z"),
+            )
+            db.execute(
+                "INSERT INTO check_results (service_name, status, response_time_ms, checked_at) VALUES (?, ?, ?, ?)",
+                ("SvcTie", "up", 12.3, "2026-02-22T12:00:00Z"),
+            )
+        latest = database.get_latest_status(["SvcTie"])
+        assert latest["SvcTie"]["status"] == "up"
 
 
 class TestIncidentDowntimeHours:
@@ -207,6 +222,21 @@ class TestIncidents:
 
     def test_external_id_not_found(self):
         assert database.get_incident_by_external_id("nope") is None
+
+    def test_external_id_unique_constraint(self):
+        database.create_incident(
+            title="External A",
+            impact="minor",
+            message="msg",
+            external_id="ext-dup",
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            database.create_incident(
+                title="External B",
+                impact="minor",
+                message="msg",
+                external_id="ext-dup",
+            )
 
     def test_update_incident_impact_valid(self):
         inc_id = database.create_incident(

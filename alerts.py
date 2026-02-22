@@ -135,6 +135,7 @@ def _create_jira_ticket(incident_id, title, impact, message, service):
             "description": f"Impact: {impact.upper()}\n\n{message}\n\nAuto-created by status-page (incident #{incident_id})",
             "issuetype": {"name": "Bug"},
             "priority": {"name": priority_map.get(impact, "Medium")},
+            "labels": ["status-page-incident", f"incident-{incident_id}"],
         }
     }
 
@@ -171,16 +172,38 @@ def _resolve_jira_ticket(incident_id, message, jira_key=None):
     try:
         issue_key = jira_key
         if not issue_key:
-            jql = f'project = {project} AND summary ~ "\\"incident #{incident_id}\\"" ORDER BY created DESC'
+            label_jql = (
+                f'project = {project} '
+                f'AND labels = "status-page-incident" '
+                f'AND labels = "incident-{incident_id}" '
+                "ORDER BY created DESC"
+            )
             search = requests.get(
                 f"{base}/rest/api/2/search",
-                params={"jql": jql, "maxResults": 1, "fields": "key,status"},
+                params={"jql": label_jql, "maxResults": 1, "fields": "key,status"},
                 auth=auth,
                 headers=headers,
                 timeout=15,
             )
             search.raise_for_status()
             issues = search.json().get("issues", [])
+            if not issues:
+                # Backward compatibility for older tickets created before labels were added.
+                legacy_jql = (
+                    f"project = {project} AND ("
+                    f'summary ~ "\\"incident #{incident_id}\\"" OR '
+                    f'description ~ "\\"incident #{incident_id}\\""'
+                    ") ORDER BY created DESC"
+                )
+                search = requests.get(
+                    f"{base}/rest/api/2/search",
+                    params={"jql": legacy_jql, "maxResults": 1, "fields": "key,status"},
+                    auth=auth,
+                    headers=headers,
+                    timeout=15,
+                )
+                search.raise_for_status()
+                issues = search.json().get("issues", [])
             if not issues:
                 logger.info("No Jira ticket found for incident #%d", incident_id)
                 return

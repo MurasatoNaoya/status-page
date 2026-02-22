@@ -1,6 +1,7 @@
 """Import incidents from external status feeds into the database."""
 
 import logging
+import sqlite3
 
 from database import (
     create_incident,
@@ -11,6 +12,26 @@ from database import (
 from status_feeds import poll_feed
 
 logger = logging.getLogger(__name__)
+
+
+def _sync_existing_incident(existing, item, svc_ext_id):
+    """Apply feed status/impact changes to an already-imported incident."""
+    if existing["status"] != item["status"]:
+        update_incident(
+            existing["id"],
+            status=item["status"],
+            message=f"Status changed to {item['status']} (via {item['source']} status page).",
+            resolved_at=item.get("resolved_at"),
+        )
+        logger.info(
+            "Updated incident #%d (%s) to %s",
+            existing["id"],
+            svc_ext_id,
+            item["status"],
+        )
+    new_impact = item.get("impact", "minor")
+    if existing["impact"] != new_impact:
+        update_incident_impact(existing["id"], new_impact)
 
 
 def poll_status_feed(feed_config):
@@ -42,35 +63,33 @@ def poll_status_feed(feed_config):
             existing = get_incident_by_external_id(svc_ext_id)
 
             if existing:
-                if existing["status"] != item["status"]:
-                    update_incident(
-                        existing["id"],
-                        status=item["status"],
-                        message=f"Status changed to {item['status']} (via {item['source']} status page).",
-                        resolved_at=item.get("resolved_at"),
-                    )
-                    logger.info(
-                        "Updated incident #%d (%s) to %s",
-                        existing["id"],
-                        svc_ext_id,
-                        item["status"],
-                    )
-                new_impact = item.get("impact", "minor")
-                if existing["impact"] != new_impact:
-                    update_incident_impact(existing["id"], new_impact)
+                _sync_existing_incident(existing, item, svc_ext_id)
                 continue
 
-            inc_id = create_incident(
-                title=item["title"],
-                impact=item.get("impact", "minor"),
-                message=first_msg,
-                service_name=svc_name,
-                external_id=svc_ext_id,
-                created_at=item.get("created_at"),
-                resolved_at=item.get("resolved_at"),
-                status=item.get("status", "investigating"),
-                initial_status=first_update_status,
-            )
+            try:
+                inc_id = create_incident(
+                    title=item["title"],
+                    impact=item.get("impact", "minor"),
+                    message=first_msg,
+                    service_name=svc_name,
+                    external_id=svc_ext_id,
+                    created_at=item.get("created_at"),
+                    resolved_at=item.get("resolved_at"),
+                    status=item.get("status", "investigating"),
+                    initial_status=first_update_status,
+                )
+            except sqlite3.IntegrityError:
+                # Concurrent importer/backfill race: another worker inserted first.
+                existing = get_incident_by_external_id(svc_ext_id)
+                if not existing:
+                    raise
+                _sync_existing_incident(existing, item, svc_ext_id)
+                logger.info(
+                    "Skipped duplicate incident insert for %s (existing id=%d)",
+                    svc_ext_id,
+                    existing["id"],
+                )
+                continue
 
             for upd in reversed(updates[:-1]):
                 update_incident(

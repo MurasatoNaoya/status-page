@@ -19,8 +19,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
-          pip install pytest
+          pip install -r requirements-dev.txt
 
       - name: Run unit tests
         run: pytest tests --ignore=tests/test_e2e.py -v
@@ -37,8 +36,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
-          pip install pytest pytest-playwright
+          pip install -r requirements-dev.txt
 
       - name: Install Playwright browsers
         run: playwright install --with-deps chromium

@@ -20,8 +20,8 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Install linters
-        run: pip install ruff
+      - name: Install dev dependencies
+        run: pip install -r requirements-dev.txt
 
       - name: Ruff check (auto-fix)
         run: ruff check . --fix

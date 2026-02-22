@@ -52,6 +52,16 @@ class TestIndexPage:
         assert "script-src 'self' 'nonce-" in csp
         assert "script-src 'self' 'unsafe-inline'" not in csp
 
+    def test_index_nonce_matches_csp_and_no_placeholder_leaks(self, app_client):
+        resp = app_client.get("/")
+        html = resp.data.decode()
+        csp = resp.headers.get("Content-Security-Policy", "")
+        m = re.search(r"script-src 'self' 'nonce-([^']+)'", csp)
+        assert m, "CSP nonce not found in response header"
+        nonce = m.group(1)
+        assert "__CSP_NONCE__" not in html
+        assert f'<script nonce="{nonce}">' in html
+
 
 class TestThemeToggleJS:
     """Verify the shared theme JS is loaded on pages."""

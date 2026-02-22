@@ -252,7 +252,7 @@
     </div>
     <div id="shared-tip"></div>
     <script src="{{ url_for('static', filename='theme.js') }}"></script>
-    <script nonce="{{ csp_nonce() }}">
+    <script nonce="__CSP_NONCE__">
     // Incident filters — category and impact work independently
     var activeCategoryFilter = 'all';
     var activeImpactFilter = null;

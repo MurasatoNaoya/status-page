@@ -361,18 +361,23 @@ def _render_index_uncached():
     )
 
 
+def _inject_csp_nonce(html):
+    """Inject per-request CSP nonce into cached HTML template output."""
+    return html.replace("__CSP_NONCE__", getattr(g, "_csp_nonce", ""))
+
+
 def _render_index_cached():
     if not _cache_enabled():
-        return _render_index_uncached()
+        return _inject_csp_nonce(_render_index_uncached())
     now = time.time()
     with _index_cache_lock:
         if _index_cache["html"] is not None and now < _index_cache["expires_at"]:
-            return _index_cache["html"]
+            return _inject_csp_nonce(_index_cache["html"])
     html = _render_index_uncached()
     with _index_cache_lock:
         _index_cache["html"] = html
         _index_cache["expires_at"] = now + _index_cache_ttl_seconds()
-    return html
+    return _inject_csp_nonce(html)
 
 
 # --- API for managing incidents ---

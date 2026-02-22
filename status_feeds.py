@@ -4,6 +4,7 @@ import hashlib
 import logging
 import re
 import threading
+from html import unescape
 import defusedxml.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 
@@ -14,6 +15,14 @@ logger = logging.getLogger(__name__)
 SESSION = requests.Session()
 SESSION.headers["User-Agent"] = "status-page/1.0"
 TIMEOUT = 15
+
+
+def _strip_html(value):
+    """Remove HTML tags and decode entities."""
+    if not value:
+        return ""
+    text = re.sub(r"<[^>]+>", " ", value)
+    return re.sub(r"\s+", " ", unescape(text)).strip()
 
 
 def poll_statuspage_api(feed_config):
@@ -360,7 +369,13 @@ def _parse_azure_history(html, exclude_regions=None):
     exclude_lower = [r.lower() for r in exclude_regions]
     incidents = []
 
-    blocks = re.split(r'class="row incident-history-header"', html)
+    blocks = re.split(
+        r'class\s*=\s*["\']row incident-history-header["\']',
+        html,
+        flags=re.IGNORECASE,
+    )
+    if len(blocks) <= 1:
+        logger.warning("Azure history parser found no incident blocks")
 
     for block in blocks[1:]:
         # Tracking ID
@@ -373,15 +388,11 @@ def _parse_azure_history(html, exclude_regions=None):
         title_m = re.search(
             r"incident-history-title[^>]*>(.*?)</div>", block, re.DOTALL
         )
-        title = (
-            re.sub(r"<[^>]+>", "", title_m.group(1)).strip() if title_m else "Unknown"
-        )
+        title = _strip_html(title_m.group(1)) if title_m else "Unknown"
 
         # Body text
         body_m = re.search(r"card-body[^>]*>(.*?)</div>\s*</div>", block, re.DOTALL)
-        body = re.sub(r"<[^>]+>", " ", body_m.group(1)).strip() if body_m else ""
-        # Clean up whitespace
-        body = re.sub(r"\s+", " ", body)
+        body = _strip_html(body_m.group(1)) if body_m else ""
 
         combined = (title + " " + body).lower()
         title_lower = title.lower()
@@ -732,20 +743,24 @@ def _parse_statusio_history(html, component_map, source_name="Status.io"):
     Returns list of incident dicts in our standard feed format.
     """
     incidents = []
-    blocks = re.split(r'<div[^>]*class="row incident"', html)
+    blocks = re.split(
+        r'<div[^>]*class\s*=\s*["\']row incident["\']',
+        html,
+        flags=re.IGNORECASE,
+    )
+    if len(blocks) <= 1:
+        logger.warning("Status.io history parser found no incident blocks")
 
     for block in blocks[1:]:
         # ID
-        id_m = re.search(r'id="statusio_incident_([a-f0-9]+)"', block)
+        id_m = re.search(r'id="statusio_incident_([a-fA-F0-9]+)"', block)
         inc_id = id_m.group(1) if id_m else None
         if not inc_id:
             continue
 
         # Title
         title_m = re.search(r"panel-title.*?<a[^>]*>(.*?)</a>", block, re.DOTALL)
-        title = (
-            re.sub(r"<[^>]+>", "", title_m.group(1)).strip() if title_m else "Unknown"
-        )
+        title = _strip_html(title_m.group(1)) if title_m else "Unknown"
 
         # Severity text
         sev_m = re.search(r'status_description">(.*?)<', block)
@@ -788,7 +803,7 @@ def _parse_statusio_history(html, component_map, source_name="Status.io"):
 
             status_text = re.sub(r"<[^>]+>", "", status_html).strip().lower()
             status = _STATUSIO_UPDATE_STATUS_MAP.get(status_text, "investigating")
-            message = re.sub(r"<[^>]+>", "", msg_html).strip()
+            message = _strip_html(msg_html)
 
             updates.append(
                 {

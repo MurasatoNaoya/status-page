@@ -22,10 +22,10 @@ def send_alerts(incident_id, title, impact, message, service=None):
     """Send alert to all configured channels."""
     _send_slack(incident_id, title, impact, message, service)
     _send_teams(incident_id, title, impact, message, service)
-    _create_jira_ticket(incident_id, title, impact, message, service)
+    return _create_jira_ticket(incident_id, title, impact, message, service)
 
 
-def send_resolution(incident_id, message):
+def send_resolution(incident_id, message, jira_key=None):
     """Notify channels that an incident has been resolved."""
     slack_url = os.environ.get("SLACK_WEBHOOK_URL")
     if slack_url:
@@ -47,7 +47,7 @@ def send_resolution(incident_id, message):
         except Exception as e:
             logger.error("Teams resolution alert failed: %s", e)
 
-    _resolve_jira_ticket(incident_id, message)
+    _resolve_jira_ticket(incident_id, message, jira_key=jira_key)
 
 
 def _send_slack(incident_id, title, impact, message, service):
@@ -119,7 +119,7 @@ def _create_jira_ticket(incident_id, title, impact, message, service):
 
     if not all([jira_url, project, user, token]):
         logger.debug("JIRA env vars not fully set, skipping Jira ticket")
-        return
+        return None
 
     priority_map = {
         "major": "Highest",
@@ -149,11 +149,13 @@ def _create_jira_ticket(incident_id, title, impact, message, service):
         resp.raise_for_status()
         issue_key = resp.json().get("key", "?")
         logger.info("Jira ticket %s created for incident #%d", issue_key, incident_id)
+        return issue_key
     except Exception as e:
         logger.error("Jira ticket creation failed: %s", e)
+        return None
 
 
-def _resolve_jira_ticket(incident_id, message):
+def _resolve_jira_ticket(incident_id, message, jira_key=None):
     """Comment on and transition the Jira ticket tied to an incident (best effort)."""
     jira_url = os.environ.get("JIRA_URL")
     project = os.environ.get("JIRA_PROJECT")
@@ -167,21 +169,22 @@ def _resolve_jira_ticket(incident_id, message):
     base = jira_url.rstrip("/")
     headers = {"Content-Type": "application/json"}
     try:
-        jql = f'project = {project} AND summary ~ "\\"incident #{incident_id}\\"" ORDER BY created DESC'
-        search = requests.get(
-            f"{base}/rest/api/2/search",
-            params={"jql": jql, "maxResults": 1, "fields": "key,status"},
-            auth=auth,
-            headers=headers,
-            timeout=15,
-        )
-        search.raise_for_status()
-        issues = search.json().get("issues", [])
-        if not issues:
-            logger.info("No Jira ticket found for incident #%d", incident_id)
-            return
-
-        issue_key = issues[0]["key"]
+        issue_key = jira_key
+        if not issue_key:
+            jql = f'project = {project} AND summary ~ "\\"incident #{incident_id}\\"" ORDER BY created DESC'
+            search = requests.get(
+                f"{base}/rest/api/2/search",
+                params={"jql": jql, "maxResults": 1, "fields": "key,status"},
+                auth=auth,
+                headers=headers,
+                timeout=15,
+            )
+            search.raise_for_status()
+            issues = search.json().get("issues", [])
+            if not issues:
+                logger.info("No Jira ticket found for incident #%d", incident_id)
+                return
+            issue_key = issues[0]["key"]
         requests.post(
             f"{base}/rest/api/2/issue/{issue_key}/comment",
             json={"body": f"Resolved via status-page: {message}"},

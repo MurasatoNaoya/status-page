@@ -1,6 +1,7 @@
 """Tests for app.py — Flask routes and core logic."""
 
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
@@ -208,6 +209,125 @@ class TestAdminAuth:
         assert resp.status_code == 429
         # Clean up
         app_module._login_failures.clear()
+
+
+class TestAdminOperations:
+    def test_admin_backfill_reports_partial_failure(self, app_client):
+        import app as app_module
+
+        csrf_token = "test-csrf-token"
+        with app_client.session_transaction() as sess:
+            sess["admin"] = True
+            sess["_csrf_token"] = csrf_token
+
+        feeds = [{"name": "FeedA"}, {"name": "FeedB"}]
+        with (
+            patch.object(app_module, "STATUS_FEEDS", feeds),
+            patch.object(app_module, "poll_status_feed") as mock_poll,
+        ):
+            mock_poll.side_effect = [None, Exception("timeout")]
+            resp = app_client.post(
+                "/admin/backfill",
+                data={"_csrf_token": csrf_token},
+                follow_redirects=True,
+            )
+        assert resp.status_code == 200
+        assert b"Backfill partially completed" in resp.data
+        assert b"Failed feed(s): FeedB" in resp.data
+
+    def test_admin_feed_coverage_returns_json(self, app_client):
+        import app as app_module
+
+        csrf_token = "test-csrf-token"
+        with app_client.session_transaction() as sess:
+            sess["admin"] = True
+            sess["_csrf_token"] = csrf_token
+
+        feeds = [
+            {
+                "name": "GitHub",
+                "components": {"Actions": "GitHub Actions"},
+                "covered_services": ["GitHub API"],
+            }
+        ]
+        with (
+            patch.object(app_module, "STATUS_FEEDS", feeds),
+            patch.object(
+                app_module,
+                "get_feed_incident_stats",
+                return_value={"cnt": 2, "oldest": "2026-01-01T00:00:00Z", "newest": "2026-02-01T00:00:00Z"},
+            ),
+        ):
+            resp = app_client.get("/admin/feed-coverage")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data[0]["feed"] == "GitHub"
+        assert data[0]["incident_count"] == 2
+        assert "GitHub Actions" in data[0]["services"]
+
+    def test_prune_login_failures_removes_stale_and_caps(self, app_client):
+        import app as app_module
+
+        app_module._login_failures.clear()
+        now = time.monotonic()
+        app_module._login_failures["stale"] = [now - 10000]
+        app_module._login_failures["fresh"] = [now]
+        for i in range(10050):
+            app_module._login_failures[f"ip-{i}"] = [now - (i % 10)]
+        app_module._prune_login_failures()
+        assert "stale" not in app_module._login_failures
+        assert len(app_module._login_failures) <= 10000
+        app_module._login_failures.clear()
+
+    def test_declare_incident_persists_jira_key(self, app_client):
+        import app as app_module
+
+        csrf_token = "test-csrf-token"
+        with app_client.session_transaction() as sess:
+            sess["admin"] = True
+            sess["_csrf_token"] = csrf_token
+
+        with patch.object(app_module, "send_alerts", return_value="OPS-77"):
+            resp = app_client.post(
+                "/admin/declare",
+                data={
+                    "_csrf_token": csrf_token,
+                    "title": "API outage",
+                    "impact": "major",
+                    "message": "Investigating",
+                    "service": "GitHub API",
+                },
+            )
+        assert resp.status_code == 302
+        inc = database.get_recent_incidents(limit=1)[0]
+        assert inc["jira_key"] == "OPS-77"
+
+    def test_resolve_uses_persisted_jira_key(self, app_client):
+        import app as app_module
+
+        csrf_token = "test-csrf-token"
+        with app_client.session_transaction() as sess:
+            sess["admin"] = True
+            sess["_csrf_token"] = csrf_token
+
+        inc_id = database.create_incident(
+            title="Outage",
+            impact="major",
+            message="Investigating",
+            jira_key="OPS-123",
+        )
+        with patch.object(app_module, "send_resolution") as mock_send_resolution:
+            resp = app_client.post(
+                f"/admin/update/{inc_id}",
+                data={
+                    "_csrf_token": csrf_token,
+                    "status": "resolved",
+                    "message": "Fixed",
+                },
+            )
+        assert resp.status_code == 302
+        assert mock_send_resolution.called
+        assert mock_send_resolution.call_args.kwargs["jira_key"] == "OPS-123"
 
 
 class TestGMTFilter:
@@ -436,11 +556,7 @@ class TestBuildServiceData:
                         ("OldSvc", "up", 10.0, ts),
                     )
         latest = database.get_latest_status(["OldSvc"])
-        # Provide incident coverage so bars show green instead of grey
-        coverage = {"OldSvc": "2020-01-01"}
-        data, _ = build_service_data(
-            [{"name": "OldSvc", "interval": 60}], latest, coverage_start=coverage
-        )
+        data, _ = build_service_data([{"name": "OldSvc", "interval": 60}], latest)
         svc = data[0]
         # Today's bar should have a percentage (not None)
         today_bar = svc["days"][-1]
@@ -702,10 +818,7 @@ class TestBarCoverage:
         from app import build_service_data
 
         latest = database.get_latest_status(["FeedSvc"])
-        coverage = {"FeedSvc": "2020-01-01"}
-        data, _ = build_service_data(
-            [{"name": "FeedSvc", "interval": 60}], latest, coverage_start=coverage
-        )
+        data, _ = build_service_data([{"name": "FeedSvc", "interval": 60}], latest)
         today_bar = data[0]["days"][-1]
         assert today_bar["uptime_pct"] is None
 
@@ -794,9 +907,8 @@ class TestBarCoverage:
             ]
         }
         latest = database.get_latest_status(["IncSvc"])
-        coverage = {"IncSvc": "2020-01-01"}
         data, _ = build_service_data(
-            [{"name": "IncSvc", "interval": 60}], latest, incidents_by_day, coverage
+            [{"name": "IncSvc", "interval": 60}], latest, incidents_by_day
         )
         today_bar = data[0]["days"][-1]
         assert today_bar["severity"] == "partial"  # partial → partial (orange)
@@ -808,10 +920,7 @@ class TestBarCoverage:
 
         self._seed_days("GreenSvc", 5)
         latest = database.get_latest_status(["GreenSvc"])
-        coverage = {"GreenSvc": "2020-01-01"}
-        data, _ = build_service_data(
-            [{"name": "GreenSvc", "interval": 60}], latest, coverage_start=coverage
-        )
+        data, _ = build_service_data([{"name": "GreenSvc", "interval": 60}], latest)
         today_bar = data[0]["days"][-1]
         assert today_bar["severity"] is None  # No severity = green
         assert today_bar["uptime_pct"] == 100.0

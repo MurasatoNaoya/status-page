@@ -12,6 +12,7 @@ class TestSendAlerts:
             patch.object(alerts, "_send_teams") as mock_teams,
             patch.object(alerts, "_create_jira_ticket") as mock_jira,
         ):
+            mock_jira.return_value = "OPS-1"
             alerts.send_alerts(1, "Outage", "major", "Investigating", "Svc")
             mock_slack.assert_called_once_with(
                 1, "Outage", "major", "Investigating", "Svc"
@@ -22,6 +23,11 @@ class TestSendAlerts:
             mock_jira.assert_called_once_with(
                 1, "Outage", "major", "Investigating", "Svc"
             )
+
+    def test_send_alerts_returns_jira_key(self):
+        with patch.object(alerts, "_create_jira_ticket", return_value="OPS-9"):
+            key = alerts.send_alerts(1, "Outage", "major", "Investigating", "Svc")
+        assert key == "OPS-9"
 
 
 class TestSlack:
@@ -175,3 +181,27 @@ class TestSendResolution:
         assert mock_get.call_count == 2
         # comment + transition
         assert mock_post.call_count == 2
+
+    @patch.dict(
+        "os.environ",
+        {
+            "JIRA_URL": "https://company.atlassian.net",
+            "JIRA_PROJECT": "OPS",
+            "JIRA_USER": "user@co.com",
+            "JIRA_TOKEN": "token123",
+        },
+    )
+    @patch("alerts.requests.get")
+    @patch("alerts.requests.post")
+    def test_resolution_uses_jira_key_without_search(self, mock_post, mock_get):
+        mock_get.return_value = MagicMock(
+            json=lambda: {"transitions": [{"id": "31", "name": "Done"}]},
+            raise_for_status=lambda: None,
+        )
+        mock_post.return_value.raise_for_status = lambda: None
+
+        alerts.send_resolution(42, "Service recovered", jira_key="OPS-42")
+
+        # Should fetch transitions only (no JQL search)
+        assert mock_get.call_count == 1
+        assert "/transitions" in mock_get.call_args.args[0]

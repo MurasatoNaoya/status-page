@@ -230,6 +230,18 @@ class TestIncidents:
             ).fetchone()
         assert row["impact"] == "partial"  # unchanged
 
+    def test_set_incident_jira_key(self):
+        inc_id = database.create_incident(
+            title="Jira Link", impact="minor", message="msg"
+        )
+        ok = database.set_incident_jira_key(inc_id, "OPS-101")
+        assert ok is True
+        inc = database.get_incident(inc_id)
+        assert inc["jira_key"] == "OPS-101"
+
+    def test_get_incident_returns_none_when_missing(self):
+        assert database.get_incident(999999) is None
+
 
 class TestRecentChecks:
     def test_recent_checks(self):

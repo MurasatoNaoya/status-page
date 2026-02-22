@@ -6,7 +6,9 @@ from status_feeds import (
     poll_statuspage_api,
     poll_azure_rss,
     poll_feed,
+    _parse_azure_history,
     _match_azure_services,
+    _parse_statusio_history,
 )
 
 
@@ -486,3 +488,37 @@ class TestAzureRSSServiceMatching:
 
         assert len(results) == 1
         assert results[0]["services"] is None
+
+
+class TestHistoryParserHardening:
+    def test_statusio_history_accepts_uppercase_id_and_decodes_entities(self):
+        html = """
+        <div class="row incident" id="statusio_incident_AB12CD">
+          <div class="panel-title"><a>Registry &amp; Auth outage</a></div>
+          <p>Components</p>
+          <p class="incident_section event_inner_text">Docker Hub Registry</p>
+          <strong class="incident_time">February 02, 2026 12:00 UTC<br>February 02, 2026 12:00 UTC</strong>
+          <strong class="incident_update_status">resolved</strong>
+          <span class="incident_message_details">Resolved &amp; recovered</span>
+        </div>
+        """
+        parsed = _parse_statusio_history(
+            html, {"Docker Hub Registry": "Docker Hub"}, source_name="Docker"
+        )
+        assert len(parsed) == 1
+        assert parsed[0]["external_id"] == "AB12CD"
+        assert "Registry & Auth outage" in parsed[0]["title"]
+        assert "Resolved & recovered" in parsed[0]["updates"][0]["message"]
+
+    def test_azure_history_handles_entity_decoding(self):
+        html = """
+        <div class="row incident-history-header">
+          Tracking ID: TRK123
+          <div class="incident-history-title">AKS &amp; ARM outage</div>
+          <div class="card-body">Between 10:00 UTC and 11:00 UTC on 08 December 2025</div>
+        </div>
+        """
+        parsed = _parse_azure_history(html, exclude_regions=[])
+        assert len(parsed) == 1
+        assert parsed[0]["external_id"] == "azure-pir-TRK123"
+        assert "AKS & ARM outage" in parsed[0]["title"]

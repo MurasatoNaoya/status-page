@@ -34,9 +34,8 @@ from database import (
     get_feed_incident_stats,
     get_active_incident_for_service,
     get_active_incidents,
-    get_check_coverage_start,
-    get_incident_coverage_start,
     get_incidents_by_day,
+    get_incident,
     get_latest_status,
     get_recent_checks,
     get_recent_incidents,
@@ -44,6 +43,7 @@ from database import (
     get_uptime_percentage,
     init_db,
     record_check,
+    set_incident_jira_key,
     update_incident,
 )
 
@@ -74,6 +74,24 @@ _login_failures = {}  # ip -> [timestamp, ...]
 _login_lock = threading.Lock()
 _LOGIN_MAX_ATTEMPTS = 5
 _LOGIN_WINDOW_SECONDS = 300  # 5 minutes
+
+
+def _prune_login_failures():
+    now = time.monotonic()
+    with _login_lock:
+        # Remove expired entries
+        stale = [
+            ip
+            for ip, ts in _login_failures.items()
+            if all(now - t >= _LOGIN_WINDOW_SECONDS for t in ts)
+        ]
+        for ip in stale:
+            del _login_failures[ip]
+        # Hard cap: if still over 10k IPs, evict oldest entries
+        if len(_login_failures) > 10000:
+            by_age = sorted(_login_failures.items(), key=lambda kv: max(kv[1]))
+            for ip, _ in by_age[: len(_login_failures) - 10000]:
+                del _login_failures[ip]
 
 
 def _get_csrf_token():
@@ -329,24 +347,6 @@ def start_scheduler():
             id=f"feed_{feed['name']}_init",
         )
 
-    # Periodic cleanup of stale login failure entries (every 10 minutes)
-    def _prune_login_failures():
-        now = time.monotonic()
-        with _login_lock:
-            # Remove expired entries
-            stale = [
-                ip
-                for ip, ts in _login_failures.items()
-                if all(now - t >= _LOGIN_WINDOW_SECONDS for t in ts)
-            ]
-            for ip in stale:
-                del _login_failures[ip]
-            # Hard cap: if still over 10k IPs, evict oldest entries
-            if len(_login_failures) > 10000:
-                by_age = sorted(_login_failures.items(), key=lambda kv: max(kv[1]))
-                for ip, _ in by_age[: len(_login_failures) - 10000]:
-                    del _login_failures[ip]
-
     scheduler.add_job(
         _run_with_app_context,
         "interval",
@@ -410,15 +410,13 @@ def _filter_incidents_for_service(incidents_list, service_name):
     return result[:3]
 
 
-def build_service_data(svc_list, latest, incidents_by_day=None, coverage_start=None):
+def build_service_data(svc_list, latest, incidents_by_day=None):
     """Build template-ready data for a list of services."""
     all_operational = True
     services_data = []
     today = datetime.now(timezone.utc).date()
     if incidents_by_day is None:
         incidents_by_day = {}
-    if coverage_start is None:
-        coverage_start = {}
 
     for svc in svc_list:
         name = svc["name"]
@@ -522,39 +520,10 @@ def build_service_data(svc_list, latest, incidents_by_day=None, coverage_start=N
     return services_data, all_operational
 
 
-def _compute_coverage(all_svc_names):
-    """Build per-service coverage start dates from feeds and health checks."""
-    coverage = get_incident_coverage_start()
-
-    feed_covered = set()
-    feed_service_groups = []
-    for feed in STATUS_FEEDS:
-        group = set()
-        group.update(feed.get("components", {}).values())
-        group.update(feed.get("covered_services", []))
-        feed_service_groups.append(group)
-        feed_covered.update(group)
-
-    for group in feed_service_groups:
-        dates = [coverage[s] for s in group if s in coverage]
-        group_floor = min(dates) if dates else None
-        for svc_name in group:
-            if group_floor:
-                coverage[svc_name] = group_floor
-
-    non_feed_names = [n for n in all_svc_names if n not in feed_covered]
-    if non_feed_names:
-        check_cov = get_check_coverage_start(non_feed_names)
-        for svc_name, start_date in check_cov.items():
-            coverage[svc_name] = start_date
-
-    return coverage
-
-
-def _build_group_aggregate(group, latest, all_incidents_by_day, coverage):
+def _build_group_aggregate(group, latest, all_incidents_by_day):
     """Build aggregated data for a service group."""
     group_svcs, group_operational = build_service_data(
-        group.get("services", []), latest, all_incidents_by_day, coverage
+        group.get("services", []), latest, all_incidents_by_day
     )
 
     uptimes = [s["uptime_pct"] for s in group_svcs if s["uptime_pct"] is not None]
@@ -657,16 +626,12 @@ def index():
     all_svc_names = [s["name"] for s in all_services()]
     latest = get_latest_status(all_svc_names)
     all_incidents_by_day = get_incidents_by_day()
-    coverage = _compute_coverage(all_svc_names)
-
-    services_data, top_ok = build_service_data(
-        SERVICES, latest, all_incidents_by_day, coverage
-    )
+    services_data, top_ok = build_service_data(SERVICES, latest, all_incidents_by_day)
 
     groups_data = []
     groups_ok = True
     for group in GROUPS:
-        gdata = _build_group_aggregate(group, latest, all_incidents_by_day, coverage)
+        gdata = _build_group_aggregate(group, latest, all_incidents_by_day)
         if not gdata["operational"]:
             groups_ok = False
         groups_data.append(gdata)
@@ -681,9 +646,7 @@ def index():
         dns_name = DNS_BAR.get("name", "DNS Resolution")
         dns_svc_list = [{"name": dns_name, "interval": DNS_BAR.get("interval", 60)}]
         dns_latest = get_latest_status([dns_name])
-        dns_services, dns_ok = build_service_data(
-            dns_svc_list, dns_latest, all_incidents_by_day, coverage
-        )
+        dns_services, dns_ok = build_service_data(dns_svc_list, dns_latest, all_incidents_by_day)
         if not dns_ok:
             all_operational = False
         dns_bar_data = dns_services[0] if dns_services else None
@@ -903,13 +866,15 @@ def admin_declare_incident():
         title=title, impact=impact, message=message, service_name=service
     )
 
-    send_alerts(
+    jira_key = send_alerts(
         incident_id=incident_id,
         title=title,
         impact=impact,
         message=message,
         service=service,
     )
+    if jira_key:
+        set_incident_jira_key(incident_id, jira_key)
 
     flash(f"Incident declared: {title}")
     return redirect(url_for("admin_panel"))
@@ -926,13 +891,21 @@ def admin_update_incident(incident_id):
     if status not in _VALID_STATUSES:
         flash("Invalid status value.")
         return redirect(url_for("admin_panel"))
+    incident = get_incident(incident_id)
+    if not incident:
+        flash("Incident not found.")
+        return redirect(url_for("admin_panel"))
     updated = update_incident(incident_id, status=status, message=message)
     if not updated:
         flash("Incident not found.")
         return redirect(url_for("admin_panel"))
 
     if status == "resolved":
-        send_resolution(incident_id=incident_id, message=message)
+        send_resolution(
+            incident_id=incident_id,
+            message=message,
+            jira_key=incident.get("jira_key"),
+        )
 
     flash(f"Incident updated to: {status}")
     return redirect(url_for("admin_panel"))
@@ -951,11 +924,15 @@ def admin_backfill():
             "SELECT COUNT(*) FROM incidents WHERE external_id IS NOT NULL"
         ).fetchone()[0]
 
+    failed_feeds = []
+    succeeded_feeds = 0
     for feed in STATUS_FEEDS:
         try:
             poll_status_feed(feed)
+            succeeded_feeds += 1
         except Exception as e:
             logger.error("Backfill failed for feed %s: %s", feed.get("name"), e)
+            failed_feeds.append(feed.get("name", "unknown"))
 
     # Count incidents after the backfill
     with get_db() as db:
@@ -964,9 +941,16 @@ def admin_backfill():
         ).fetchone()[0]
 
     imported = after_count - before_count
-    flash(
-        f"Backfill complete: {imported} new incident(s) imported from {len(STATUS_FEEDS)} feed(s)."
-    )
+    if failed_feeds:
+        flash(
+            "Backfill partially completed: "
+            f"{imported} new incident(s), {succeeded_feeds}/{len(STATUS_FEEDS)} feed(s) succeeded. "
+            f"Failed feed(s): {', '.join(failed_feeds)}."
+        )
+    else:
+        flash(
+            f"Backfill complete: {imported} new incident(s) imported from {len(STATUS_FEEDS)} feed(s)."
+        )
     return redirect(url_for("admin_panel"))
 
 

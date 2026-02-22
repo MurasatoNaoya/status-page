@@ -374,7 +374,6 @@ class TestAdminLogin:
         admin_session.wait_for_url("**/admin/login")
 
     def test_admin_panel_has_nav_links(self, page, live_server, admin_session):
-        expect(admin_session.locator('a[href*="metrics"]')).to_be_visible()
         expect(admin_session.locator("button.admin-nav-logout")).to_be_visible()
 
     def test_sso_button_disabled(self, page, live_server):
@@ -487,8 +486,8 @@ class TestAdminIncidentManagement:
 # ── Loop 7: Admin Backfill + Metrics ───────────────────────────────────────
 
 
-class TestAdminBackfillAndMetrics:
-    """Backfill section and metrics page tests."""
+class TestAdminBackfill:
+    """Backfill section tests."""
 
     def test_backfill_section_visible(self, page, live_server, admin_session):
         expect(admin_session.locator(".backfill-section")).to_be_visible()
@@ -513,28 +512,6 @@ class TestAdminBackfillAndMetrics:
         rows = admin_session.locator(".integration-row")
         assert rows.count() >= 3, "Expected Slack, Teams, Jira integration rows"
 
-    def test_metrics_page_loads(self, page, live_server, admin_session):
-        admin_session.goto(f"{live_server}/admin/metrics")
-        expect(admin_session.locator("h1")).to_have_text("Metrics")
-
-    def test_metrics_stats_grid(self, page, live_server, admin_session):
-        admin_session.goto(f"{live_server}/admin/metrics")
-        cards = admin_session.locator(".stat-card")
-        assert cards.count() == 3, "Expected 3 stat cards"
-
-    def test_metrics_range_picker(self, page, live_server, admin_session):
-        admin_session.goto(f"{live_server}/admin/metrics")
-        range_btns = admin_session.locator(".range-btn")
-        assert range_btns.count() == 3, "Expected 7d, 30d, 90d range buttons"
-
-    def test_metrics_chart_section(self, page, live_server, admin_session):
-        admin_session.goto(f"{live_server}/admin/metrics")
-        expect(admin_session.locator(".chart-section").first).to_be_visible()
-
-    def test_metrics_nav_links(self, page, live_server, admin_session):
-        admin_session.goto(f"{live_server}/admin/metrics")
-        expect(admin_session.locator('a[href*="admin"]').first).to_be_visible()
-        expect(admin_session.locator("button.admin-nav-logout")).to_be_visible()
 
 
 # ── Loop 8: Edge Cases + Error Handling ────────────────────────────────────
@@ -569,13 +546,6 @@ class TestEdgeCases:
         admin_session.reload()
         admin_session.wait_for_load_state("networkidle")
         assert errors == [], f"JS errors on admin: {errors}"
-
-    def test_no_js_errors_on_admin_metrics(self, page, live_server, admin_session):
-        errors = []
-        admin_session.on("pageerror", lambda e: errors.append(str(e)))
-        admin_session.goto(f"{live_server}/admin/metrics")
-        admin_session.wait_for_load_state("networkidle")
-        assert errors == [], f"JS errors on metrics: {errors}"
 
     def test_no_js_errors_on_login_page(self, page, live_server):
         errors = []
@@ -714,10 +684,6 @@ class TestPerformanceAndLifecycle:
         admin_session.goto(f"{live_server}/admin")
         admin_session.wait_for_load_state("networkidle")
 
-        # Metrics
-        admin_session.goto(f"{live_server}/admin/metrics")
-        admin_session.wait_for_load_state("networkidle")
-
         assert errors == [], f"JS errors during navigation: {errors}"
 
     def test_all_pages_have_proper_title(self, page, live_server, admin_session):
@@ -729,6 +695,3 @@ class TestPerformanceAndLifecycle:
 
         admin_session.goto(f"{live_server}/admin")
         assert "Admin" in admin_session.title()
-
-        admin_session.goto(f"{live_server}/admin/metrics")
-        assert "Metrics" in admin_session.title()

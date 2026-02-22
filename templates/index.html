@@ -134,19 +134,6 @@
                 <div class="service-error">{{ svc.error }}</div>
                 {% endif %}
 
-                {% if svc.social_posts %}
-                <div class="social-chatter">
-                    <div class="social-header">Community Reports</div>
-                    {% for post in svc.social_posts[:3] %}
-                    <a href="{{ post.url }}" target="_blank" rel="noopener" class="social-post">
-                        <span class="social-source">{{ post.source }}</span>
-                        {% if post.subreddit %}r/{{ post.subreddit }} &middot;{% endif %}
-                        {{ post.title[:120] }}
-                        {% if post.score %}<span class="social-score">{{ post.score }} pts</span>{% endif %}
-                    </a>
-                    {% endfor %}
-                </div>
-                {% endif %}
             </div>
             {% endfor %}
         </div>

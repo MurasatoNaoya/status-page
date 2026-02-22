@@ -55,6 +55,9 @@ def check_dns(service):
         return "down", None, str(e)
 
 
+# SECURITY: Commands are read from config.yaml which must be a trusted,
+# read-only file. shell=True is NOT used — shlex.split prevents injection.
+# If config.yaml is writable by untrusted parties, this is an RCE vector.
 def check_script(service):
     command = service["command"]
     timeout = service.get("timeout", 30)

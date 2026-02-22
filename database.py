@@ -50,17 +50,6 @@ def init_db():
                 resolved_at TEXT
             );
 
-            CREATE TABLE IF NOT EXISTS page_views (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                path TEXT NOT NULL,
-                ip TEXT,
-                user_agent TEXT,
-                referrer TEXT,
-                viewed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-            );
-            CREATE INDEX IF NOT EXISTS idx_page_views_date
-                ON page_views(viewed_at);
-
             CREATE TABLE IF NOT EXISTS incident_updates (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 incident_id INTEGER NOT NULL REFERENCES incidents(id),
@@ -119,65 +108,9 @@ def record_check(service_name, status, response_time_ms, error_message=None):
         )
 
 
-def record_page_view(path, ip=None, user_agent=None, referrer=None):
-    with get_db() as db:
-        db.execute(
-            "INSERT INTO page_views (path, ip, user_agent, referrer) VALUES (?, ?, ?, ?)",
-            (path, ip, user_agent, referrer),
-        )
-
-
-def get_page_view_stats(days=30):
-    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
-    )
-    with get_db() as db:
-        # Total views
-        total = db.execute(
-            "SELECT COUNT(*) FROM page_views WHERE viewed_at >= ?", (since,)
-        ).fetchone()[0]
-
-        # Unique IPs
-        unique = db.execute(
-            "SELECT COUNT(DISTINCT ip) FROM page_views WHERE viewed_at >= ?", (since,)
-        ).fetchone()[0]
-
-        # Views per day
-        daily = db.execute(
-            """SELECT date(viewed_at) as day, COUNT(*) as views, COUNT(DISTINCT ip) as unique_ips
-               FROM page_views WHERE viewed_at >= ?
-               GROUP BY day ORDER BY day""",
-            (since,),
-        ).fetchall()
-
-        # Top pages
-        pages = db.execute(
-            """SELECT path, COUNT(*) as views
-               FROM page_views WHERE viewed_at >= ?
-               GROUP BY path ORDER BY views DESC LIMIT 10""",
-            (since,),
-        ).fetchall()
-
-        # Views per hour (for today)
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%dT00:00:00Z")
-        hourly = db.execute(
-            """SELECT strftime('%H', viewed_at) as hour, COUNT(*) as views
-               FROM page_views WHERE viewed_at >= ?
-               GROUP BY hour ORDER BY hour""",
-            (today,),
-        ).fetchall()
-
-        return {
-            "total": total,
-            "unique_visitors": unique,
-            "daily": [dict(r) for r in daily],
-            "top_pages": [dict(r) for r in pages],
-            "hourly_today": [dict(r) for r in hourly],
-        }
-
 
 def cleanup_old_checks(retention_days=90):
-    """Delete check_results and page_views older than retention_days."""
+    """Delete check_results older than retention_days."""
     cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
@@ -185,12 +118,9 @@ def cleanup_old_checks(retention_days=90):
         checks = db.execute(
             "DELETE FROM check_results WHERE checked_at < ?", (cutoff,)
         ).rowcount
-        views = db.execute(
-            "DELETE FROM page_views WHERE viewed_at < ?", (cutoff,)
-        ).rowcount
-        if checks + views > 0:
+        if checks > 0:
             db.execute("PRAGMA optimize")
-        return checks + views
+        return checks
 
 
 def get_latest_status(service_names):

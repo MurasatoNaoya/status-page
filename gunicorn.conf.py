@@ -9,3 +9,5 @@ threads = 2
 timeout = 30
 accesslog = "-"
 errorlog = "-"
+max_requests = 1000
+max_requests_jitter = 50

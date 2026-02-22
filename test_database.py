@@ -223,14 +223,6 @@ class TestCleanup:
         assert deleted >= 0
 
 
-class TestPageViews:
-    def test_record_and_get_stats(self):
-        database.record_page_view(path="/", ip="127.0.0.1", user_agent="test")
-        database.record_page_view(path="/", ip="127.0.0.2", user_agent="test")
-        stats = database.get_page_view_stats(days=1)
-        assert stats["total"] == 2
-        assert stats["unique_visitors"] == 2
-
 
 class TestGetIncidentsByDay:
     """Test get_incidents_by_day — maps incidents to each day they span."""

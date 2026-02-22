@@ -142,6 +142,9 @@ def seed_incidents(live_server, page):
     page.click('button[type="submit"]')
     page.wait_for_url("**/admin")
 
+    # Extract CSRF token from the admin page form
+    csrf_token = page.locator('input[name="_csrf_token"]').first.get_attribute("value")
+
     incidents = [
         {
             "title": "AKS cluster issue",
@@ -173,7 +176,10 @@ def seed_incidents(live_server, page):
         resp = page.request.post(
             f"{live_server}/api/incidents",
             data=json.dumps(inc),
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "X-CSRF-Token": csrf_token,
+            },
         )
         assert resp.status == 200 or resp.status == 201, (
             f"Failed to create incident: {resp.status}"

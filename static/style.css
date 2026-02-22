@@ -464,62 +464,6 @@ header p {
     font-family: var(--font-mono);
 }
 
-/* Social chatter (shown when service is down) */
-.social-chatter {
-    margin-top: 12px;
-    padding: 10px 14px;
-    background: var(--bg);
-    border-radius: 8px;
-    border: 1px solid var(--border);
-}
-
-.social-header {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    margin-bottom: 8px;
-}
-
-.social-post {
-    display: block;
-    padding: 6px 0;
-    font-size: 13px;
-    color: var(--text);
-    text-decoration: none;
-    border-bottom: 1px solid var(--border);
-    line-height: 1.4;
-}
-
-.social-post:last-child {
-    border-bottom: none;
-    padding-bottom: 0;
-}
-
-.social-post:hover {
-    color: var(--blue);
-}
-
-.social-source {
-    display: inline-block;
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    padding: 1px 6px;
-    border-radius: 4px;
-    background: var(--border);
-    color: var(--text-secondary);
-    margin-right: 4px;
-    vertical-align: middle;
-}
-
-.social-score {
-    font-size: 11px;
-    color: var(--text-secondary);
-    margin-left: 6px;
-}
-
 /* All services wrapper — flush continuous block */
 .all-services {
     border: 1px solid var(--border);
@@ -805,7 +749,7 @@ details[open] .services.expanded {
     padding: 32px 0;
 }
 
-/* Admin header (shared by admin.html and admin_metrics.html) */
+/* Admin header */
 .admin-header {
     display: flex;
     justify-content: space-between;

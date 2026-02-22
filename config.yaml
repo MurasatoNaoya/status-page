@@ -130,19 +130,16 @@ groups:
         url: "https://mcr.microsoft.com/v2/"
         expected_status: 200
         interval: 60
-        social_keywords: ["aks outage", "azure kubernetes down", "aks down"]
 
       - name: "Azure Container Registry (ACR)"
         type: dns
         hostname: "azurecr.io"
         interval: 60
-        social_keywords: ["azure container registry down", "acr outage"]
 
       - name: "Azure AD / Entra ID"
         type: http
         url: "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration"
         interval: 60
-        social_keywords: ["azure outage", "azure down", "entra id down"]
 
       - name: "Azure Portal"
         type: http
@@ -196,7 +193,6 @@ groups:
         url: "https://github.com"
         expected_status: 200
         interval: 300
-        social_keywords: ["github down", "github website down"]
 
       # auth_token_env: uses GITHUB_TOKEN env var for authenticated API calls (5k req/hr)
       # Personal: GITHUB_TOKEN=$(gh auth token)
@@ -207,7 +203,6 @@ groups:
         expected_status: 200
         interval: 300
         auth_token_env: "GITHUB_TOKEN"
-        social_keywords: ["github down", "github outage", "github api down"]
 
       - name: "GitHub Actions"
         type: http
@@ -215,7 +210,6 @@ groups:
         expected_status: 200
         interval: 300
         auth_token_env: "GITHUB_TOKEN"
-        social_keywords: ["github actions down", "github actions outage"]
 
       - name: "GitHub Copilot"
         type: http
@@ -223,7 +217,6 @@ groups:
         expected_status: 200
         interval: 300
         auth_token_env: "GITHUB_TOKEN"
-        social_keywords: ["github copilot down", "copilot outage", "copilot not working"]
 
   - name: "Public Container Registries"
     services:
@@ -232,10 +225,8 @@ groups:
         url: "https://registry-1.docker.io/v2/"
         expected_status: 401
         interval: 300
-        social_keywords: ["docker hub down", "docker hub outage", "dockerhub issues"]
 
       - name: "Red Hat Quay.io"
         type: http
         url: "https://quay.io/api/v1/discovery"
         interval: 300
-        social_keywords: ["quay.io down", "red hat registry outage"]

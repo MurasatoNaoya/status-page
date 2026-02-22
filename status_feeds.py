@@ -4,7 +4,7 @@ import hashlib
 import logging
 import re
 import threading
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 
 import requests

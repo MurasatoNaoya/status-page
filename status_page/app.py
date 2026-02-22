@@ -646,10 +646,21 @@ def _build_group_aggregate(group, latest, all_incidents_by_day, coverage=None):
     ]
     avg_resp = round(sum(resp_times) / len(resp_times), 0) if resp_times else None
 
+    svc_statuses = [s["status"] for s in group_svcs]
+    if not svc_statuses or all(s == "no_data" for s in svc_statuses):
+        group_status = "no_data"
+    elif "major_outage" in svc_statuses:
+        group_status = "major_outage"
+    elif any(s in {"partial_outage", "degraded"} for s in svc_statuses):
+        group_status = "degraded"
+    else:
+        group_status = "operational"
+
     return {
         "name": group["name"],
         "services": group_svcs,
         "operational": group_operational,
+        "status": group_status,
         "uptime_pct": group_uptime,
         "days": days_array,
         "response_time_ms": avg_resp,
@@ -926,6 +937,8 @@ def admin_panel():
         "SLACK_WEBHOOK_URL": os.environ.get("SLACK_WEBHOOK_URL"),
         "TEAMS_WEBHOOK_URL": os.environ.get("TEAMS_WEBHOOK_URL"),
         "JIRA_URL": os.environ.get("JIRA_URL"),
+        "ALERT_EMAIL_TO": os.environ.get("ALERT_EMAIL_TO"),
+        "SMTP_HOST": os.environ.get("SMTP_HOST"),
     }
     # Build feed coverage info for the backfill section
     feed_coverage = []

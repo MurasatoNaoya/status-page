@@ -29,6 +29,15 @@
     </div>
     {% endmacro %}
 
+    {% macro badge_label(status) -%}
+        {%- if status == 'operational' -%}Operational
+        {%- elif status == 'degraded' or status == 'partial_outage' -%}Degraded
+        {%- elif status == 'major_outage' -%}Outage
+        {%- elif status == 'no_data' -%}No Data
+        {%- else -%}{{ status }}
+        {%- endif -%}
+    {%- endmacro %}
+
     <div class="container">
         <header>
             <div class="header-row">
@@ -87,14 +96,9 @@
                             <span class="response-time">{{ dns_bar.response_time_ms | round(0) | int }}ms</span>
                         {% endif %}
                         {% if dns_bar.status != 'no_data' %}
-                        <span class="service-badge {{ dns_bar.status }}">
-                            {% if dns_bar.status == 'operational' %}Operational
-                            {% elif dns_bar.status == 'major_outage' %}Outage
-                            {% else %}{{ dns_bar.status }}
-                            {% endif %}
-                        </span>
+                        <span class="service-badge {{ dns_bar.status }}">{{ badge_label(dns_bar.status) }}</span>
                         {% else %}
-                        <span class="service-badge no-data-badge">No data</span>
+                        <span class="service-badge no-data-badge">No Data</span>
                         {% endif %}
                     </div>
                 </div>
@@ -113,16 +117,9 @@
                             <span class="response-time">{{ svc.response_time_ms | round(0) | int }}ms</span>
                         {% endif %}
                         {% if svc.status != 'no_data' %}
-                        <span class="service-badge {{ svc.status }}">
-                            {% if svc.status == 'operational' %}Operational
-                            {% elif svc.status == 'degraded' %}Degraded
-                            {% elif svc.status == 'partial_outage' %}Partial Outage
-                            {% elif svc.status == 'major_outage' %}Major Outage
-                            {% else %}{{ svc.status }}
-                            {% endif %}
-                        </span>
+                        <span class="service-badge {{ svc.status }}">{{ badge_label(svc.status) }}</span>
                         {% else %}
-                        <span class="service-badge no-data-badge">No data</span>
+                        <span class="service-badge no-data-badge">No Data</span>
                         {% endif %}
                     </div>
                 </div>
@@ -148,9 +145,11 @@
                         {% if group.response_time_ms %}
                             <span class="response-time">{{ group.response_time_ms | round(0) | int }}ms</span>
                         {% endif %}
-                        <span class="service-badge {{ 'operational' if group.operational else 'major_outage' }}">
-                            {{ 'Operational' if group.operational else 'Issues Detected' }}
-                        </span>
+                        {% if group.status != 'no_data' %}
+                        <span class="service-badge {{ group.status }}">{{ badge_label(group.status) }}</span>
+                        {% else %}
+                        <span class="service-badge no-data-badge">No Data</span>
+                        {% endif %}
                     </div>
                 </div>
                 {{ uptime_bar(group) }}
@@ -170,16 +169,9 @@
                                     <span class="response-time">{{ svc.response_time_ms | round(0) | int }}ms</span>
                                 {% endif %}
                                 {% if svc.status != 'no_data' %}
-                                <span class="service-badge {{ svc.status }}">
-                                    {% if svc.status == 'operational' %}Operational
-                                    {% elif svc.status == 'degraded' %}Degraded
-                                    {% elif svc.status == 'partial_outage' %}Partial Outage
-                                    {% elif svc.status == 'major_outage' %}Major Outage
-                                    {% else %}{{ svc.status }}
-                                    {% endif %}
-                                </span>
+                                <span class="service-badge {{ svc.status }}">{{ badge_label(svc.status) }}</span>
                                 {% else %}
-                                <span class="service-badge no-data-badge">No data</span>
+                                <span class="service-badge no-data-badge">No Data</span>
                                 {% endif %}
                             </div>
                         </div>

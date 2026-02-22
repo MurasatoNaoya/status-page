@@ -75,3 +75,33 @@ def test_validate_config_accepts_dns_bar_with_requires_env():
         }
     )
     assert cfg["dns_bar"]["targets"][0]["requires_env"] == "ON_PRIVATE_NETWORK"
+
+
+def test_validate_config_accepts_statuspage_max_incident_pages():
+    cfg = validate_config(
+        {
+            "status_feeds": [
+                {
+                    "name": "GitHub",
+                    "url": "https://www.githubstatus.com/api/v2",
+                    "max_incident_pages": 20,
+                }
+            ]
+        }
+    )
+    assert cfg["status_feeds"][0]["max_incident_pages"] == 20
+
+
+def test_validate_config_rejects_bad_statuspage_max_incident_pages():
+    with pytest.raises(ValueError):
+        validate_config(
+            {
+                "status_feeds": [
+                    {
+                        "name": "GitHub",
+                        "url": "https://www.githubstatus.com/api/v2",
+                        "max_incident_pages": 0,
+                    }
+                ]
+            }
+        )

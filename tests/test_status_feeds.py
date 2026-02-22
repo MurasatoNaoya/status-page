@@ -140,13 +140,75 @@ class TestPollStatuspageAPI:
 
         assert results == []
 
+    def test_paginates_incidents_pages(self):
+        feed = {
+            "name": "GitHub",
+            "url": "https://www.githubstatus.com/api/v2",
+            "components": {"Actions": "GitHub Actions"},
+            "max_incident_pages": 3,
+        }
+        calls = {"incidents": 0}
+
+        with patch("status_page.status_feeds.SESSION.get") as mock_get:
+
+            def mock_response(url, **kwargs):
+                resp = MagicMock()
+                resp.status_code = 200
+                resp.raise_for_status = MagicMock()
+                if "components.json" in url:
+                    resp.json.return_value = MOCK_COMPONENTS_JSON
+                    return resp
+                if "incidents.json" in url:
+                    calls["incidents"] += 1
+                    page = kwargs.get("params", {}).get("page")
+                    if page == 1:
+                        resp.json.return_value = {
+                            "incidents": [
+                                {
+                                    "id": "p1",
+                                    "name": "Incident one",
+                                    "status": "resolved",
+                                    "impact": "minor",
+                                    "created_at": "2026-02-01T10:00:00Z",
+                                    "components": [{"name": "Actions"}],
+                                    "incident_updates": [],
+                                }
+                            ]
+                        }
+                    elif page == 2:
+                        resp.json.return_value = {
+                            "incidents": [
+                                {
+                                    "id": "p2",
+                                    "name": "Incident two",
+                                    "status": "resolved",
+                                    "impact": "minor",
+                                    "created_at": "2026-01-01T10:00:00Z",
+                                    "components": [{"name": "Actions"}],
+                                    "incident_updates": [],
+                                }
+                            ]
+                        }
+                    else:
+                        resp.json.return_value = {"incidents": []}
+                    return resp
+                return resp
+
+            mock_get.side_effect = mock_response
+            results = poll_statuspage_api(feed)
+
+        incidents = [r for r in results if r.get("type") != "component_status"]
+        assert len(incidents) == 2
+        assert calls["incidents"] == 3
+
 
 class TestFeedBackfillCapability:
     def test_statuspage_profile_defaults(self):
         profile = get_feed_backfill_capability({"name": "GitHub"})
         assert profile["feed_type"] == "statuspage"
-        assert profile["cap_type"] == "implementation_limited"
+        assert profile["cap_type"] == "implementation_bounded"
         assert profile["known_limit_days"] is None
+        assert profile["max_incident_pages"] == 10
 
     def test_override_profile_from_config(self):
         profile = get_feed_backfill_capability(

@@ -106,6 +106,8 @@ def _validate_status_feed(feed, field):
         _require_url_http(item["history_url"], f"{field}.history_url")
     if "interval" in item:
         _require_int(item["interval"], f"{field}.interval")
+    if "max_incident_pages" in item:
+        _require_int(item["max_incident_pages"], f"{field}.max_incident_pages", 1, 100)
     if "components" in item:
         comps = _require_dict(item["components"], f"{field}.components")
         for key, value in comps.items():
@@ -119,6 +121,10 @@ def _validate_status_feed(feed, field):
         regions = _require_list(item["exclude_regions"], f"{field}.exclude_regions")
         for i, region in enumerate(regions):
             _require_str(region, f"{field}.exclude_regions[{i}]")
+    if "backfill_cap_days" in item:
+        _require_int(item["backfill_cap_days"], f"{field}.backfill_cap_days", 1)
+    if "backfill_cap_summary" in item:
+        _require_str(item["backfill_cap_summary"], f"{field}.backfill_cap_summary")
     if ftype == "azure_service_health":
         _require_str(item.get("subscription_id"), f"{field}.subscription_id")
     return item

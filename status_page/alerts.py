@@ -12,6 +12,8 @@ Configure via environment variables:
 
 import logging
 import os
+import smtplib
+from email.message import EmailMessage
 
 import requests
 
@@ -22,6 +24,7 @@ def send_alerts(incident_id, title, impact, message, service=None):
     """Send alert to all configured channels."""
     _send_slack(incident_id, title, impact, message, service)
     _send_teams(incident_id, title, impact, message, service)
+    _send_email_incident(incident_id, title, impact, message, service)
     return _create_jira_ticket(incident_id, title, impact, message, service)
 
 
@@ -47,7 +50,72 @@ def send_resolution(incident_id, message, jira_key=None):
         except Exception as e:
             logger.error("Teams resolution alert failed: %s", e)
 
+    _send_email_resolution(incident_id, message)
     _resolve_jira_ticket(incident_id, message, jira_key=jira_key)
+
+
+def _send_email_incident(incident_id, title, impact, message, service):
+    svc_text = f" ({service})" if service else ""
+    subject = f"[Status Page] Incident #{incident_id}{svc_text}: {title}"
+    body = (
+        f"Incident #{incident_id} declared\n\n"
+        f"Title: {title}\n"
+        f"Impact: {impact.upper()}\n"
+        f"Service: {service or 'Multiple'}\n\n"
+        f"{message}\n"
+    )
+    _send_email(subject, body)
+
+
+def _send_email_resolution(incident_id, message):
+    subject = f"[Status Page] Incident #{incident_id} resolved"
+    body = f"Incident #{incident_id} has been resolved.\n\n{message}\n"
+    _send_email(subject, body)
+
+
+def _send_email(subject, body):
+    recipients_raw = os.environ.get("ALERT_EMAIL_TO", "")
+    recipients = [r.strip() for r in recipients_raw.split(",") if r.strip()]
+    smtp_host = os.environ.get("SMTP_HOST")
+    if not smtp_host or not recipients:
+        logger.debug(
+            "Email alert not configured (need SMTP_HOST and ALERT_EMAIL_TO), skipping"
+        )
+        return
+
+    smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+    smtp_user = os.environ.get("SMTP_USER")
+    smtp_pass = os.environ.get("SMTP_PASS")
+    smtp_from = os.environ.get("SMTP_FROM", smtp_user or "status-page@localhost")
+    smtp_ssl = os.environ.get("SMTP_SSL", "").lower() in ("1", "true", "yes")
+    smtp_starttls = os.environ.get("SMTP_STARTTLS", "true").lower() not in (
+        "0",
+        "false",
+        "no",
+    )
+
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = smtp_from
+    msg["To"] = ", ".join(recipients)
+    msg.set_content(body)
+
+    try:
+        if smtp_ssl:
+            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15) as server:
+                if smtp_user and smtp_pass:
+                    server.login(smtp_user, smtp_pass)
+                server.send_message(msg)
+        else:
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+                if smtp_starttls:
+                    server.starttls()
+                if smtp_user and smtp_pass:
+                    server.login(smtp_user, smtp_pass)
+                server.send_message(msg)
+        logger.info("Email alert sent to %d recipient(s)", len(recipients))
+    except Exception as e:
+        logger.error("Email alert failed: %s", e)
 
 
 def _send_slack(incident_id, title, impact, message, service):

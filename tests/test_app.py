@@ -274,7 +274,7 @@ class TestAdminOperations:
                     "feed_type": "statuspage",
                     "ingestion": "Statuspage API (/incidents.json)",
                     "known_limit_days": None,
-                    "cap_type": "implementation_limited",
+                    "cap_type": "implementation_bounded",
                     "cap_summary": "First incidents page only.",
                 },
             ),
@@ -285,7 +285,7 @@ class TestAdminOperations:
         assert data[0]["feed"] == "GitHub"
         assert data[0]["incident_count"] == 2
         assert data[0]["feed_type"] == "statuspage"
-        assert data[0]["cap_type"] == "implementation_limited"
+        assert data[0]["cap_type"] == "implementation_bounded"
         assert "GitHub Actions" in data[0]["services"]
 
     def test_prune_login_failures_removes_stale_and_caps(self, app_client):

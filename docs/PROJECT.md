@@ -111,6 +111,9 @@ Feed types:
 - **azure_rss**: Azure status RSS feed + history page scraping
 - **azure_service_health**: (commented out) Azure Service Health API — the upgrade path
 
+For `statuspage` feeds, incident backfill is paginated up to `max_incident_pages`
+(default `10`, max `100`) per feed in `config.yaml`.
+
 ### 3. Page Rendering (on each request to `/`)
 
 ```

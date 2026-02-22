@@ -6,6 +6,9 @@ page:
 status_feeds:
   - name: "GitHub"
     url: "https://www.githubstatus.com/api/v2"
+    # Statuspage pagination depth for historical backfill.
+    # Increase if you need deeper history and provider exposes older pages.
+    max_incident_pages: 10
     components:
       "Actions": "GitHub Actions"
       "Git Operations": "GitHub Web Pages (github.com)"
@@ -15,6 +18,7 @@ status_feeds:
 
   - name: "Red Hat"
     url: "https://status.redhat.com/api/v2"
+    max_incident_pages: 10
     components:
       "Quay.io": "Red Hat Quay.io"
     interval: 300

@@ -21,12 +21,12 @@ TIMEOUT = 15
 # not a guaranteed provider retention contract.
 FEED_BACKFILL_CAPS = {
     "statuspage": {
-        "ingestion": "Statuspage API (/incidents.json)",
-        "cap_type": "implementation_limited",
+        "ingestion": "Statuspage API (/incidents.json, paginated)",
+        "cap_type": "implementation_bounded",
         "known_limit_days": None,
         "cap_summary": (
-            "First incidents page only (no pagination). "
-            "Range varies by provider/account."
+            "Walks incidents pages up to a configured max page count. "
+            "Range varies by provider/account and incident volume."
         ),
     },
     "statusio": {
@@ -76,6 +76,12 @@ def get_feed_backfill_capability(feed_config):
         profile["known_limit_days"] = feed_config.get("backfill_cap_days")
     if "backfill_cap_summary" in feed_config:
         profile["cap_summary"] = str(feed_config.get("backfill_cap_summary"))
+    if feed_type == "statuspage":
+        profile["max_incident_pages"] = _statuspage_max_pages(feed_config)
+        profile["cap_summary"] = (
+            f"Walks up to {profile['max_incident_pages']} incidents page(s). "
+            "Range varies by provider/account and incident volume."
+        )
     profile["feed_type"] = feed_type
     return profile
 
@@ -86,6 +92,51 @@ def _strip_html(value):
         return ""
     text = re.sub(r"<[^>]+>", " ", value)
     return re.sub(r"\s+", " ", unescape(text)).strip()
+
+
+def _statuspage_max_pages(feed_config):
+    """Return bounded page count for Statuspage incident pagination."""
+    raw = feed_config.get("max_incident_pages", 10)
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return 10
+    return max(1, min(100, value))
+
+
+def _fetch_statuspage_incidents(base_url, max_pages):
+    """Fetch paginated Statuspage incidents with duplicate-page protection."""
+    incidents = []
+    seen_ids = set()
+    prev_page_ids = None
+    for page in range(1, max_pages + 1):
+        resp = SESSION.get(
+            f"{base_url}/incidents.json", params={"page": page}, timeout=TIMEOUT
+        )
+        resp.raise_for_status()
+        page_incidents = resp.json().get("incidents", [])
+        if not page_incidents:
+            break
+        page_ids = tuple(inc.get("id") for inc in page_incidents)
+        if page_ids and page_ids == prev_page_ids:
+            logger.warning(
+                "Statuspage incidents page %d repeated; stopping pagination",
+                page,
+            )
+            break
+        prev_page_ids = page_ids
+        added = 0
+        for inc in page_incidents:
+            inc_id = inc.get("id")
+            if inc_id and inc_id in seen_ids:
+                continue
+            if inc_id:
+                seen_ids.add(inc_id)
+            incidents.append(inc)
+            added += 1
+        if added == 0:
+            break
+    return incidents
 
 
 def poll_statuspage_api(feed_config):
@@ -124,10 +175,10 @@ def poll_statuspage_api(feed_config):
                 # partial_outage, major_outage, under_maintenance
                 component_status[matched] = comp["status"]
 
-        # Fetch recent incidents
-        resp = SESSION.get(f"{base_url}/incidents.json", timeout=TIMEOUT)
-        resp.raise_for_status()
-        incidents = resp.json().get("incidents", [])
+        # Fetch incidents with bounded pagination.
+        incidents = _fetch_statuspage_incidents(
+            base_url, _statuspage_max_pages(feed_config)
+        )
 
         # Filter to incidents affecting our mapped components
         for inc in incidents:

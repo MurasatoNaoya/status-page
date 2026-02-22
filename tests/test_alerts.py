@@ -10,6 +10,7 @@ class TestSendAlerts:
         with (
             patch.object(alerts, "_send_slack") as mock_slack,
             patch.object(alerts, "_send_teams") as mock_teams,
+            patch.object(alerts, "_send_email_incident") as mock_email,
             patch.object(alerts, "_create_jira_ticket") as mock_jira,
         ):
             mock_jira.return_value = "OPS-1"
@@ -18,6 +19,9 @@ class TestSendAlerts:
                 1, "Outage", "major", "Investigating", "Svc"
             )
             mock_teams.assert_called_once_with(
+                1, "Outage", "major", "Investigating", "Svc"
+            )
+            mock_email.assert_called_once_with(
                 1, "Outage", "major", "Investigating", "Svc"
             )
             mock_jira.assert_called_once_with(
@@ -146,9 +150,11 @@ class TestSendResolution:
         },
     )
     @patch("status_page.alerts.requests.post")
-    def test_sends_to_both_channels(self, mock_post):
+    @patch("status_page.alerts._send_email_resolution")
+    def test_sends_to_both_channels(self, mock_email, mock_post):
         alerts.send_resolution(42, "Service recovered")
         assert mock_post.call_count == 2
+        mock_email.assert_called_once_with(42, "Service recovered")
 
     @patch.dict("os.environ", {}, clear=True)
     @patch("status_page.alerts.requests.post")
@@ -244,3 +250,51 @@ class TestSendResolution:
         second_jql = mock_get.call_args_list[1].kwargs["params"]["jql"]
         assert 'labels = "status-page-incident"' in first_jql
         assert "description" in second_jql
+
+
+class TestEmail:
+    @patch.dict("os.environ", {}, clear=True)
+    @patch("status_page.alerts.smtplib.SMTP")
+    def test_email_skips_when_unconfigured(self, mock_smtp):
+        alerts._send_email("Subject", "Body")
+        mock_smtp.assert_not_called()
+
+    @patch.dict(
+        "os.environ",
+        {
+            "SMTP_HOST": "smtp.example.com",
+            "SMTP_PORT": "587",
+            "SMTP_USER": "alerts@example.com",
+            "SMTP_PASS": "secret",
+            "SMTP_FROM": "alerts@example.com",
+            "ALERT_EMAIL_TO": "ops1@example.com, ops2@example.com",
+        },
+    )
+    @patch("status_page.alerts.smtplib.SMTP")
+    def test_email_sends_via_smtp_starttls(self, mock_smtp):
+        server = MagicMock()
+        mock_smtp.return_value.__enter__.return_value = server
+
+        alerts._send_email("Subject", "Body")
+
+        server.starttls.assert_called_once()
+        server.login.assert_called_once_with("alerts@example.com", "secret")
+        server.send_message.assert_called_once()
+
+    @patch.dict(
+        "os.environ",
+        {
+            "SMTP_HOST": "smtp.example.com",
+            "SMTP_PORT": "465",
+            "SMTP_SSL": "true",
+            "ALERT_EMAIL_TO": "ops@example.com",
+        },
+    )
+    @patch("status_page.alerts.smtplib.SMTP_SSL")
+    def test_email_sends_via_smtp_ssl(self, mock_smtp_ssl):
+        server = MagicMock()
+        mock_smtp_ssl.return_value.__enter__.return_value = server
+
+        alerts._send_email("Subject", "Body")
+
+        server.send_message.assert_called_once()

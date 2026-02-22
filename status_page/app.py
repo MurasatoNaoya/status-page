@@ -62,7 +62,13 @@ _VALID_STATUSES = {"investigating", "identified", "monitoring", "resolved"}
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+app = Flask(
+    __name__,
+    template_folder=os.path.join(_APP_DIR, "templates"),
+    static_folder=os.path.join(_APP_DIR, "static"),
+    static_url_path="/static",
+)
 _SECRET_KEY_ENV = os.environ.get("SECRET_KEY")
 app.secret_key = _SECRET_KEY_ENV or secrets.token_hex(32)
 app.config["SESSION_COOKIE_SAMESITE"] = "Strict"
@@ -184,9 +190,6 @@ def format_day(iso_date):
         return f"{d.day} {d.strftime('%b')} {d.year}"
     except (ValueError, AttributeError):
         return iso_date
-
-
-_APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 def load_config(path="config.yaml"):

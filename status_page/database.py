@@ -767,5 +767,7 @@ def backup_database(max_backups=7):
     for old in backups[: max(0, len(backups) - max_backups)]:
         old.unlink(missing_ok=True)
 
-    logger.info("Database backed up to %s (%d kept)", dest.name, min(len(backups), max_backups))
+    logger.info(
+        "Database backed up to %s (%d kept)", dest.name, min(len(backups), max_backups)
+    )
     return str(dest)

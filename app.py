@@ -116,7 +116,6 @@ def login_required(f):
     return decorated
 
 
-
 @app.template_filter("gmt")
 def format_gmt(value):
     """Format an ISO timestamp as 'Feb 14, 2026 18:22 GMT'."""
@@ -816,7 +815,9 @@ def api_create_incident():
         return jsonify({"error": "Missing required field: title"}), 400
     impact = data.get("impact", "minor")
     if impact not in {"major", "partial", "minor"}:
-        return jsonify({"error": "Invalid impact. Must be one of: major, minor, partial"}), 400
+        return jsonify(
+            {"error": "Invalid impact. Must be one of: major, minor, partial"}
+        ), 400
     incident_id = create_incident(
         title=data["title"][:255],
         impact=impact,
@@ -835,7 +836,11 @@ def api_update_incident(incident_id):
     if not data or "status" not in data or "message" not in data:
         return jsonify({"error": "Missing required fields: status, message"}), 400
     if data["status"] not in _VALID_STATUSES:
-        return jsonify({"error": f"Invalid status. Must be one of: {', '.join(sorted(_VALID_STATUSES))}"}), 400
+        return jsonify(
+            {
+                "error": f"Invalid status. Must be one of: {', '.join(sorted(_VALID_STATUSES))}"
+            }
+        ), 400
     update_incident(incident_id, status=data["status"], message=data["message"][:2000])
     return jsonify({"ok": True})
 
@@ -873,7 +878,9 @@ def admin_login():
         with _login_lock:
             # Prune old attempts and check rate limit
             attempts = [
-                t for t in _login_failures.get(ip, []) if now - t < _LOGIN_WINDOW_SECONDS
+                t
+                for t in _login_failures.get(ip, [])
+                if now - t < _LOGIN_WINDOW_SECONDS
             ]
             if attempts:
                 _login_failures[ip] = attempts
@@ -983,7 +990,6 @@ def admin_declare_incident():
 
     flash(f"Incident declared: {title}")
     return redirect(url_for("admin_panel"))
-
 
 
 @app.route("/admin/update/<int:incident_id>", methods=["POST"])

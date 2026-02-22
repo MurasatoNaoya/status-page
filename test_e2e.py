@@ -513,7 +513,6 @@ class TestAdminBackfill:
         assert rows.count() >= 3, "Expected Slack, Teams, Jira integration rows"
 
 
-
 # ── Loop 8: Edge Cases + Error Handling ────────────────────────────────────
 
 

@@ -223,7 +223,6 @@ class TestCleanup:
         assert deleted >= 0
 
 
-
 class TestGetIncidentsByDay:
     """Test get_incidents_by_day — maps incidents to each day they span."""
 

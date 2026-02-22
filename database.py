@@ -108,7 +108,6 @@ def record_check(service_name, status, response_time_ms, error_message=None):
         )
 
 
-
 def cleanup_old_checks(retention_days=90):
     """Delete check_results older than retention_days."""
     cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).strftime(

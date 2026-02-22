@@ -14,15 +14,12 @@
   <circle cx="1060" cy="64" r="120" fill="#1f2937" opacity="0.35"/>
   <circle cx="1120" cy="220" r="88" fill="#0b1220" opacity="0.35"/>
 
-  <g transform="translate(94,82)" filter="url(#soft)">
+  <g transform="translate(78,60) scale(1.55)" filter="url(#soft)">
     <path d="M32 6L4 20l28 14 28-14Z" fill="#E04343"/>
     <path d="M4 26l28 14 28-14" fill="none" stroke="#E86235" stroke-width="4.5" stroke-linejoin="round"/>
     <path d="M4 36l28 14 28-14" fill="none" stroke="#FAA72A" stroke-width="4.5" stroke-linejoin="round"/>
     <path d="M4 46l28 14 28-14" fill="none" stroke="#76AD2A" stroke-width="4.5" stroke-linejoin="round"/>
   </g>
 
-  <text x="180" y="120" fill="#f8fafc" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="64" font-weight="700">status-page</text>
-  <text x="180" y="164" fill="#cbd5e1" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="26" font-weight="500">Flask status dashboard for internal/public service visibility</text>
-
-  <line x1="180" y1="186" x2="1018" y2="186" stroke="#334155" stroke-width="2"/>
+  <text x="220" y="152" fill="#f8fafc" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="74" font-weight="700">status-page</text>
 </svg>

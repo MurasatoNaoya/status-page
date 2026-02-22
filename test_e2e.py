@@ -483,7 +483,7 @@ class TestAdminIncidentManagement:
         assert forms.count() >= 1, "Expected CSRF tokens in admin forms"
 
 
-# ── Loop 7: Admin Backfill + Metrics ───────────────────────────────────────
+# ── Loop 7: Admin Backfill + Integrations ──────────────────────────────────
 
 
 class TestAdminBackfill:

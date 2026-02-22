@@ -911,7 +911,7 @@ class TestPollStatusFeedServiceFiltering:
         """When a feed has a component map, incidents with no matching services should be skipped.
         Bug: Docker incidents for Docker Desktop/Billing created with service_name=NULL
         and leaked to all service bars."""
-        from app import poll_status_feed
+        from feed_importer import poll_status_feed
 
         feed_results = [
             {
@@ -927,7 +927,7 @@ class TestPollStatusFeedServiceFiltering:
             "name": "Docker",
             "components": {"Docker Hub Registry": "Docker Hub"},
         }
-        with patch("app.poll_feed", return_value=feed_results):
+        with patch("feed_importer.poll_feed", return_value=feed_results):
             poll_status_feed(feed_config)
 
         # Should NOT create an incident (service not mapped)
@@ -938,7 +938,7 @@ class TestPollStatusFeedServiceFiltering:
 
     def test_feed_with_components_creates_mapped_incidents(self):
         """When a feed has a component map, incidents WITH matching services should be created."""
-        from app import poll_status_feed
+        from feed_importer import poll_status_feed
 
         feed_results = [
             {
@@ -954,7 +954,7 @@ class TestPollStatusFeedServiceFiltering:
             "name": "Docker",
             "components": {"Docker Hub Registry": "Docker Hub"},
         }
-        with patch("app.poll_feed", return_value=feed_results):
+        with patch("feed_importer.poll_feed", return_value=feed_results):
             poll_status_feed(feed_config)
 
         inc = database.get_incident_by_external_id("mapped-456:Docker Hub")
@@ -964,7 +964,7 @@ class TestPollStatusFeedServiceFiltering:
     def test_feed_without_components_creates_null_service_incidents(self):
         """Feeds without component maps (like Azure RSS keyword matching)
         should still create incidents with service_name=NULL when no services matched."""
-        from app import poll_status_feed
+        from feed_importer import poll_status_feed
 
         feed_results = [
             {
@@ -978,7 +978,7 @@ class TestPollStatusFeedServiceFiltering:
         ]
         # No components key = no component map
         feed_config = {"name": "Azure"}
-        with patch("app.poll_feed", return_value=feed_results):
+        with patch("feed_importer.poll_feed", return_value=feed_results):
             poll_status_feed(feed_config)
 
         inc = database.get_incident_by_external_id("azure-rss-999")
@@ -1397,7 +1397,7 @@ class TestPollStatusFeed:
     """Test poll_status_feed per-service incident creation."""
 
     def test_creates_one_incident_per_affected_service(self):
-        from app import poll_status_feed
+        from feed_importer import poll_status_feed
 
         feed_results = [
             {
@@ -1414,7 +1414,7 @@ class TestPollStatusFeed:
                 ],
             }
         ]
-        with patch("app.poll_feed", return_value=feed_results):
+        with patch("feed_importer.poll_feed", return_value=feed_results):
             poll_status_feed({"name": "TestFeed"})
 
         # Should have 3 separate incidents
@@ -1428,7 +1428,7 @@ class TestPollStatusFeed:
         assert b["service_name"] == "ServiceB"
 
     def test_skips_already_imported_incidents(self):
-        from app import poll_status_feed
+        from feed_importer import poll_status_feed
 
         # Pre-create incident
         database.create_incident(
@@ -1444,7 +1444,7 @@ class TestPollStatusFeed:
                 "source": "TestFeed",
             }
         ]
-        with patch("app.poll_feed", return_value=feed_results):
+        with patch("feed_importer.poll_feed", return_value=feed_results):
             poll_status_feed({"name": "TestFeed"})
 
         # Should not create duplicate
@@ -1453,7 +1453,7 @@ class TestPollStatusFeed:
         assert len(matching) == 1
 
     def test_updates_status_to_resolved(self):
-        from app import poll_status_feed
+        from feed_importer import poll_status_feed
 
         # poll_status_feed creates external_id as "resolve-me:Svc" for per-service copies
         database.create_incident(
@@ -1472,7 +1472,7 @@ class TestPollStatusFeed:
                 "source": "TestFeed",
             }
         ]
-        with patch("app.poll_feed", return_value=feed_results):
+        with patch("feed_importer.poll_feed", return_value=feed_results):
             poll_status_feed({"name": "TestFeed"})
 
         inc = database.get_incident_by_external_id("resolve-me:Svc")
@@ -1480,7 +1480,7 @@ class TestPollStatusFeed:
         assert inc["resolved_at"] is not None
 
     def test_skips_component_status_items(self):
-        from app import poll_status_feed
+        from feed_importer import poll_status_feed
 
         feed_results = [
             {
@@ -1490,13 +1490,13 @@ class TestPollStatusFeed:
                 "source": "TestFeed",
             }
         ]
-        with patch("app.poll_feed", return_value=feed_results):
+        with patch("feed_importer.poll_feed", return_value=feed_results):
             poll_status_feed({"name": "TestFeed"})
         # No incidents should be created
         assert database.get_recent_incidents(limit=10) == []
 
     def test_incident_with_no_services_uses_none(self):
-        from app import poll_status_feed
+        from feed_importer import poll_status_feed
 
         feed_results = [
             {
@@ -1508,7 +1508,7 @@ class TestPollStatusFeed:
                 "source": "TestFeed",
             }
         ]
-        with patch("app.poll_feed", return_value=feed_results):
+        with patch("feed_importer.poll_feed", return_value=feed_results):
             poll_status_feed({"name": "TestFeed"})
 
         inc = database.get_incident_by_external_id("no-svc-123")

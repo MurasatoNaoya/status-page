@@ -8,6 +8,8 @@ import requests
 
 def check_http(service):
     url = service["url"]
+    if not url.startswith(("http://", "https://")):
+        return "down", None, f"Invalid URL scheme: {url}"
     timeout = service.get("timeout", 10)
     expected_status = service.get("expected_status", 200)
     headers = {}

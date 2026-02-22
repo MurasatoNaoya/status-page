@@ -1,7 +1,9 @@
 """Direct tests for feed_importer.py incident sync behavior."""
 
 import sqlite3
+from unittest.mock import patch
 
+import status_page.database as database
 from status_page import feed_importer
 
 
@@ -203,10 +205,6 @@ def test_integrityerror_race_path_still_sends_resolution(monkeypatch):
 # ---------------------------------------------------------------------------
 # Integration tests (require database fixture from conftest.py)
 # ---------------------------------------------------------------------------
-
-from unittest.mock import patch
-
-import status_page.database as database
 
 
 class TestPollStatusFeedServiceFiltering:

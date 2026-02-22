@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 import threading
-from typing import Any, Callable, TypedDict
+from typing import Any, Callable, TypedDict, cast
 
 
 class RuntimeContext(TypedDict):
@@ -64,7 +64,7 @@ class RuntimeContext(TypedDict):
 
 
 def _default_runtime_context_provider() -> RuntimeContext:
-    return {}  # type: ignore[return-value]
+    return cast(RuntimeContext, {})
 
 
 _runtime_context_provider: Callable[[], RuntimeContext] = (

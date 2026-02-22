@@ -78,6 +78,20 @@ class TestAPIRoutes:
         data = resp.get_json()
         assert isinstance(data, dict)
 
+    def test_scheduler_health_endpoint_healthy(self, app_client):
+        with patch("status_page.app.get_scheduler_health") as mock_health:
+            mock_health.return_value = {"status": "healthy", "enabled": True}
+            resp = app_client.get("/api/health/scheduler")
+        assert resp.status_code == 200
+        assert resp.get_json()["status"] == "healthy"
+
+    def test_scheduler_health_endpoint_stale(self, app_client):
+        with patch("status_page.app.get_scheduler_health") as mock_health:
+            mock_health.return_value = {"status": "stale", "enabled": True}
+            resp = app_client.get("/api/health/scheduler")
+        assert resp.status_code == 503
+        assert resp.get_json()["status"] == "stale"
+
     def test_create_incident_api_unauthenticated(self, app_client):
         resp = app_client.post(
             "/api/incidents",

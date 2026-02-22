@@ -5,11 +5,10 @@ import os
 import secrets
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from functools import wraps
 
 import yaml
-from apscheduler.schedulers.background import BackgroundScheduler
 from flask import (
     Flask,
     g,
@@ -31,25 +30,34 @@ from status_page.incident_service import (
     declare_incident_with_alerts,
     resolve_incident_with_alerts,
 )
-from status_page.telemetry import incr, observe, snapshot, timed_call
+from status_page.scheduler_jobs import (
+    create_scheduler,
+    get_scheduler_health,
+    mark_scheduler_disabled,
+)
+from status_page.status_view import (
+    build_coverage_map,
+    build_feed_coverage,
+    build_group_aggregate,
+    build_service_data,
+    deduplicate_past_incidents,
+    filter_incidents_for_service as status_view_filter_incidents_for_service,
+    incident_severity as status_view_incident_severity,
+)
+from status_page.telemetry import incr, snapshot
 from status_page.database import (
     backfill_check_gaps,
-    cleanup_old_checks,
     cleanup_orphan_services,
     close_request_db,
     create_incident,
-    get_check_coverage_start,
-    get_db,
-    get_feed_incident_stats,
-    get_incident_coverage_start,
     get_active_incident_for_service,
+    get_feed_incident_stats,
+    get_db,
     get_active_incidents,
     get_incidents_by_day,
     get_latest_status,
     get_recent_checks,
     get_recent_incidents,
-    get_uptime_days,
-    get_uptime_percentage,
     init_db,
     record_check,
     update_incident,
@@ -224,7 +232,26 @@ PAGE = CONFIG.get("page") or {}
 STATUS_FEEDS = CONFIG.get("status_feeds") or []
 
 
+def all_services():
+    """Flatten all services from top-level and groups."""
+    svcs = list(SERVICES)
+    for group in GROUPS:
+        svcs.extend(group.get("services", []))
+    return svcs
+
+
+def _incident_severity(incidents):
+    """Backward-compatible alias for tests and external imports."""
+    return status_view_incident_severity(incidents)
+
+
+def _filter_incidents_for_service(incidents_list, service_name):
+    """Backward-compatible alias for tests and external imports."""
+    return status_view_filter_incidents_for_service(incidents_list, service_name)
+
+
 def run_service_check(service):
+    """Backward-compatible wrapper; scheduler uses extracted module jobs."""
     status, response_time_ms, error = run_check(service)
     if status == "skip":
         logger.info("%s: skipped (%s)", service["name"], error or "no reason")
@@ -233,8 +260,6 @@ def run_service_check(service):
     record_check(service["name"], status, response_time_ms, error)
     incr("checks.total")
     incr(f"checks.status.{status}")
-    if response_time_ms is not None:
-        observe("checks.response_time_ms", response_time_ms)
     level = logging.DEBUG if status == "up" else logging.WARNING
     logger.log(
         level,
@@ -246,11 +271,8 @@ def run_service_check(service):
 
     name = service["name"]
     active = get_active_incident_for_service(name)
-
     if status != "up":
-        # Check if we've hit the consecutive failure threshold
         recent = get_recent_checks(name, limit=INCIDENT_THRESHOLD + 1)
-        # Skip if the previous check is stale (app was offline, not the service)
         interval = service.get("interval", 60)
         if len(recent) >= 2:
             prev_time = datetime.fromisoformat(
@@ -265,7 +287,6 @@ def run_service_check(service):
         consecutive_failures = all(
             r["status"] != "up" for r in recent[:INCIDENT_THRESHOLD]
         )
-
         if consecutive_failures and len(recent) >= INCIDENT_THRESHOLD and not active:
             error_msg = error or "Service unavailable"
             declare_incident_with_alerts(
@@ -275,27 +296,17 @@ def run_service_check(service):
                 service_name=name,
             )
             logger.warning("Auto-created incident for %s: %s", name, error_msg)
-    else:
-        # Service recovered — auto-resolve any active incident
-        if active:
-            resolved = resolve_incident_with_alerts(
-                incident_id=active["id"],
-                message="Service has recovered. Automatically resolved.",
-            )
-            if resolved:
-                logger.info("Auto-resolved incident #%d for %s", active["id"], name)
-
-
-def all_services():
-    """Flatten all services from top-level and groups."""
-    svcs = list(SERVICES)
-    for group in GROUPS:
-        svcs.extend(group.get("services", []))
-    return svcs
+    elif active:
+        resolved = resolve_incident_with_alerts(
+            incident_id=active["id"],
+            message="Service has recovered. Automatically resolved.",
+        )
+        if resolved:
+            logger.info("Auto-resolved incident #%d for %s", active["id"], name)
 
 
 def run_dns_bar_check():
-    """Run all DNS bar checks and record aggregate to DB."""
+    """Backward-compatible wrapper; scheduler uses extracted module jobs."""
     if not DNS_BAR:
         return
     start = time.monotonic()
@@ -307,19 +318,15 @@ def run_dns_bar_check():
         incr("checks.skipped")
         return
     elapsed_ms = (time.monotonic() - start) * 1000
-
     total = len(active_results)
     failed = [r for r in active_results if r["status"] != "up"]
     failed_count = len(failed)
-
     name = DNS_BAR.get("name", "DNS Resolution")
     if failed_count == 0:
         msg = None if skipped == 0 else f"{skipped} target(s) skipped by env gating"
         record_check(name, "up", elapsed_ms, msg)
         incr("checks.total")
         incr("checks.status.up")
-        observe("checks.response_time_ms", elapsed_ms)
-        # Auto-resolve DNS incident if active
         active = get_active_incident_for_service(name)
         if active:
             resolved = resolve_incident_with_alerts(
@@ -336,8 +343,6 @@ def run_dns_bar_check():
         record_check(name, "down", elapsed_ms, error_msg)
         incr("checks.total")
         incr("checks.status.down")
-        observe("checks.response_time_ms", elapsed_ms)
-        # Auto-create DNS incident after consecutive failures
         recent = get_recent_checks(name, limit=INCIDENT_THRESHOLD)
         if (
             len(recent) >= INCIDENT_THRESHOLD
@@ -353,410 +358,12 @@ def run_dns_bar_check():
             logger.warning("Auto-created DNS incident: %s", error_msg)
 
 
-def start_scheduler():
-    scheduler = BackgroundScheduler()
-
-    def _run_with_app_context(fn, *args, **kwargs):
-        with app.app_context():
-            return timed_call(f"jobs.{fn.__name__}.ms", fn, *args, **kwargs)
-
-    # Schedule DNS bar checks
-    if DNS_BAR:
-        interval = DNS_BAR.get("interval", 60)
-        scheduler.add_job(
-            _run_with_app_context,
-            "interval",
-            seconds=interval,
-            args=[run_dns_bar_check],
-            id="dns_bar",
-            replace_existing=True,
-        )
-        scheduler.add_job(
-            _run_with_app_context, args=[run_dns_bar_check], id="dns_bar_init"
-        )
-
-    for svc in all_services():
-        interval = svc.get("interval", 60)
-        scheduler.add_job(
-            _run_with_app_context,
-            "interval",
-            seconds=interval,
-            args=[run_service_check, svc],
-            id=svc["name"],
-            replace_existing=True,
-        )
-        # Run first check immediately
-        scheduler.add_job(
-            _run_with_app_context,
-            args=[run_service_check, svc],
-            id=f"{svc['name']}_init",
-        )
-
-    # Schedule external status feed polling
-    for feed in STATUS_FEEDS:
-        interval = feed.get("interval", 300)
-        scheduler.add_job(
-            _run_with_app_context,
-            "interval",
-            seconds=interval,
-            args=[poll_status_feed, feed],
-            id=f"feed_{feed['name']}",
-            replace_existing=True,
-        )
-        # Run first poll immediately
-        scheduler.add_job(
-            _run_with_app_context,
-            args=[poll_status_feed, feed],
-            id=f"feed_{feed['name']}_init",
-        )
-
-    scheduler.add_job(
-        _run_with_app_context,
-        "interval",
-        minutes=10,
-        args=[_prune_login_failures],
-        id="login_cleanup",
-        replace_existing=True,
-    )
-
-    # Daily cleanup of old check data (runs at 3am UTC)
-    def _run_cleanup():
-        deleted = cleanup_old_checks(retention_days=90)
-        if deleted:
-            logger.info("Cleaned up %d old check records", deleted)
-
-    scheduler.add_job(
-        _run_with_app_context,
-        "cron",
-        hour=3,
-        minute=0,
-        args=[_run_cleanup],
-        id="db_cleanup",
-        replace_existing=True,
-    )
-
-    scheduler.start()
-    return scheduler
-
-
-_IMPACT_TO_SEVERITY = {
-    "major": "major",
-    "partial": "partial",
-    "minor": "degraded",
-    "none": "degraded",
-}
-
-
-def _incident_severity(incidents):
-    """Get the worst severity from a list of incidents based on their impact."""
-    if not incidents:
-        return None
-    worst = max(
-        incidents,
-        key=lambda i: {"major": 3, "partial": 2, "minor": 1}.get(
-            i.get("impact", "minor"), 0
-        ),
-    )
-    return _IMPACT_TO_SEVERITY.get(worst.get("impact"), "degraded")
-
-
-def _filter_incidents_for_service(incidents_list, service_name):
-    """Filter and deduplicate incidents relevant to a specific service."""
-    seen = set()
-    result = []
-    for inc in incidents_list:
-        inc_svc = inc.get("service_name")
-        if inc_svc == service_name or inc_svc is None:
-            if inc["id"] not in seen:
-                seen.add(inc["id"])
-                result.append(inc)
-    return result[:3]
-
-
-def _get_feed_covered_services():
-    """Build a set of service names covered by at least one status feed."""
-    covered = set()
-    for feed in STATUS_FEEDS:
-        covered.update(feed.get("components", {}).values())
-        covered.update(feed.get("covered_services", []))
-    return covered
-
-
-def build_service_data(svc_list, latest, incidents_by_day=None, coverage=None):
-    """Build template-ready data for a list of services.
-
-    ``coverage`` maps service_name → earliest date string ('YYYY-MM-DD')
-    for which feed or check data exists.  Days within coverage that have
-    no incidents and no check data are shown as green (100% uptime).
-    Days before coverage are grey (no data).
-    """
-    all_operational = True
-    services_data = []
-    today = datetime.now(timezone.utc).date()
-    if incidents_by_day is None:
-        incidents_by_day = {}
-    if coverage is None:
-        coverage = {}
-
-    for svc in svc_list:
-        name = svc["name"]
-        status_info = latest.get(name)
-        uptime_days = get_uptime_days(name)
-        uptime_pct = get_uptime_percentage(name) if len(uptime_days) >= 3 else None
-        interval_sec = svc.get("interval", 60)
-
-        day_map = {d["day"]: d for d in uptime_days}
-        coverage_start = coverage.get(name)
-        days_array = []
-        for i in range(89, -1, -1):
-            day = (today - timedelta(days=i)).isoformat()
-
-            # Always look up incidents for this day
-            day_incidents = _filter_incidents_for_service(
-                incidents_by_day.get(day, []), name
-            )
-
-            # Is this day within the coverage window?
-            in_coverage = coverage_start is not None and day >= coverage_start
-
-            if day in day_map:
-                d = day_map[day]
-                pct = 100.0 * d["up_count"] / d["total"] if d["total"] > 0 else None
-                # Get unique errors for the day (deduplicated)
-                errors_raw = d.get("errors") or ""
-                errors = list(
-                    dict.fromkeys(e.strip() for e in errors_raw.split("|") if e.strip())
-                )[:3]
-                down_count = d.get("down_count", 0)
-
-                # Downtime estimation and severity
-                downtime_sec = down_count * interval_sec
-                severity = _incident_severity(day_incidents)
-
-                days_array.append(
-                    {
-                        "date": day,
-                        "uptime_pct": pct,
-                        "down_count": down_count,
-                        "total": d.get("total", 0),
-                        "errors": errors,
-                        "downtime_hours": downtime_sec // 3600,
-                        "downtime_mins": (downtime_sec % 3600) // 60,
-                        "severity": severity if day_incidents else None,
-                        "incidents": day_incidents,
-                    }
-                )
-            else:
-                severity = _incident_severity(day_incidents)
-                # Within coverage and no incidents → service was fine (green)
-                inferred_pct = 100.0 if (in_coverage and not day_incidents) else None
-                days_array.append(
-                    {
-                        "date": day,
-                        "uptime_pct": inferred_pct,
-                        "down_count": 0,
-                        "total": 0,
-                        "errors": [],
-                        "downtime_hours": 0,
-                        "downtime_mins": 0,
-                        "severity": severity,
-                        "incidents": day_incidents,
-                    }
-                )
-
-        # Badge reflects the CURRENT status (latest check), not averages
-        current_status = "operational"
-        if not status_info:
-            current_status = "no_data"
-        elif status_info["status"] != "up":
-            # Latest check is down — classify severity from active incident
-            active_inc = get_active_incident_for_service(name)
-            if active_inc:
-                inc_impact = active_inc.get("impact", "minor")
-                if inc_impact == "major":
-                    current_status = "major_outage"
-                elif inc_impact == "partial":
-                    current_status = "partial_outage"
-                else:
-                    current_status = "degraded"
-            else:
-                # No active incident yet, but latest check failed — degraded
-                current_status = "degraded"
-            all_operational = False
-        elif not uptime_days and not coverage_start:
-            current_status = "no_data"
-
-        services_data.append(
-            {
-                "name": name,
-                "status": current_status,
-                "uptime_pct": uptime_pct,
-                "response_time_ms": status_info["response_time_ms"]
-                if status_info
-                else None,
-                "error": status_info["error_message"] if status_info else None,
-                "days": days_array,
-            }
-        )
-
-    return services_data, all_operational
-
-
-def _build_group_aggregate(group, latest, all_incidents_by_day, coverage=None):
-    """Build aggregated data for a service group."""
-    group_svcs, group_operational = build_service_data(
-        group.get("services", []), latest, all_incidents_by_day, coverage=coverage
-    )
-
-    uptimes = [s["uptime_pct"] for s in group_svcs if s["uptime_pct"] is not None]
-    group_uptime = round(sum(uptimes) / len(uptimes), 2) if uptimes else None
-
-    days_array = []
-    if group_svcs:
-        for day_idx in range(90):
-            day_pcts = []
-            day_downs = 0
-            day_totals = 0
-            day_errors = []
-            day_incidents_merged = {}
-            day_date = None
-            day_downtime_sec = 0
-            for svc in group_svcs:
-                if day_idx < len(svc["days"]):
-                    d = svc["days"][day_idx]
-                    day_date = d["date"]
-                    if d["uptime_pct"] is not None:
-                        day_pcts.append(d["uptime_pct"])
-                    day_downs += d.get("down_count", 0)
-                    day_totals += d.get("total", 0)
-                    day_errors.extend(d.get("errors", []))
-                    day_downtime_sec += (
-                        d.get("downtime_hours", 0) * 3600
-                        + d.get("downtime_mins", 0) * 60
-                    )
-                    for inc in d.get("incidents", []):
-                        day_incidents_merged[inc["id"]] = inc
-            avg_pct = round(sum(day_pcts) / len(day_pcts), 1) if day_pcts else None
-            seen_titles = {}
-            for inc in day_incidents_merged.values():
-                if inc["title"] not in seen_titles:
-                    seen_titles[inc["title"]] = inc
-            merged_incidents = list(seen_titles.values())[:3]
-            severity = _incident_severity(merged_incidents)
-            days_array.append(
-                {
-                    "date": day_date or "",
-                    "uptime_pct": avg_pct,
-                    "down_count": day_downs,
-                    "total": day_totals,
-                    "errors": list(dict.fromkeys(day_errors))[:3],
-                    "downtime_hours": day_downtime_sec // 3600,
-                    "downtime_mins": (day_downtime_sec % 3600) // 60,
-                    "severity": severity,
-                    "incidents": merged_incidents,
-                }
-            )
-
-    resp_times = [
-        s["response_time_ms"] for s in group_svcs if s["response_time_ms"] is not None
-    ]
-    avg_resp = round(sum(resp_times) / len(resp_times), 0) if resp_times else None
-
-    svc_statuses = [s["status"] for s in group_svcs]
-    if not svc_statuses or all(s == "no_data" for s in svc_statuses):
-        group_status = "no_data"
-    elif "major_outage" in svc_statuses:
-        group_status = "major_outage"
-    elif any(
-        s in {"partial_outage", "degraded", "under_maintenance"} for s in svc_statuses
-    ):
-        group_status = "degraded"
-    else:
-        group_status = "operational"
-
-    return {
-        "name": group["name"],
-        "services": group_svcs,
-        "operational": group_operational,
-        "status": group_status,
-        "uptime_pct": group_uptime,
-        "days": days_array,
-        "response_time_ms": avg_resp,
-    }
-
-
-_IMPACT_RANK = {"major": 3, "partial": 2, "minor": 1, "none": 0}
-
-
-def _deduplicate_past_incidents(past_incidents):
-    """Group past incidents by date, deduplicating per-service copies."""
-    incidents_by_date = {}
-    seen_base_ids = {}
-    for inc in past_incidents:
-        ext_id = inc.get("external_id") or ""
-        base_id = ext_id.rsplit(":", 1)[0] if ":" in ext_id else ext_id
-        if base_id and base_id in seen_base_ids:
-            canonical = seen_base_ids[base_id]
-            canonical.setdefault("alias_ids", []).append(inc["id"])
-            if _IMPACT_RANK.get(inc.get("impact"), 0) > _IMPACT_RANK.get(
-                canonical.get("impact"), 0
-            ):
-                canonical["impact"] = inc["impact"]
-            continue
-        if base_id:
-            seen_base_ids[base_id] = inc
-        inc["alias_ids"] = []
-        date_str = inc["created_at"][:10]
-        try:
-            dt = datetime.fromisoformat(date_str)
-            date_label = dt.strftime("%b %d, %Y")
-        except ValueError:
-            date_label = date_str
-        incidents_by_date.setdefault(date_label, []).append(inc)
-    return incidents_by_date
-
-
 @app.route("/")
 def index():
     all_svc_names = [s["name"] for s in all_services()]
     latest = get_latest_status(all_svc_names)
     all_incidents_by_day = get_incidents_by_day()
-
-    # Build coverage map: service_name → earliest date string ('YYYY-MM-DD')
-    # A service is "covered" from the earliest date that any data source
-    # (health checks or feed incidents) can vouch for it.  Days within
-    # coverage that have no incidents are assumed operational (green).
-    incident_starts = get_incident_coverage_start()
-    check_starts = get_check_coverage_start(all_svc_names)
-
-    # For each feed, compute the oldest date its data covers so that
-    # services with zero incidents still get feed-based coverage.
-    feed_coverage_start = {}
-    for feed in STATUS_FEEDS:
-        svc_names_feed = set()
-        svc_names_feed.update(feed.get("components", {}).values())
-        svc_names_feed.update(feed.get("covered_services", []))
-        if not svc_names_feed:
-            continue
-        stats = get_feed_incident_stats(svc_names_feed)
-        oldest = stats["oldest"][:10] if stats.get("oldest") else None
-        if oldest:
-            for svc in svc_names_feed:
-                cur = feed_coverage_start.get(svc)
-                if cur is None or oldest < cur:
-                    feed_coverage_start[svc] = oldest
-
-    coverage = {}
-    for name in all_svc_names:
-        dates = []
-        if name in check_starts:
-            dates.append(check_starts[name])
-        if name in incident_starts:
-            dates.append(incident_starts[name])
-        if name in feed_coverage_start:
-            dates.append(feed_coverage_start[name])
-        if dates:
-            coverage[name] = min(dates)
+    coverage = build_coverage_map(all_svc_names, STATUS_FEEDS)
 
     services_data, top_ok = build_service_data(
         SERVICES, latest, all_incidents_by_day, coverage=coverage
@@ -765,7 +372,7 @@ def index():
     groups_data = []
     groups_ok = True
     for group in GROUPS:
-        gdata = _build_group_aggregate(
+        gdata = build_group_aggregate(
             group, latest, all_incidents_by_day, coverage=coverage
         )
         if not gdata["operational"]:
@@ -789,7 +396,7 @@ def index():
             all_operational = False
         dns_bar_data = dns_services[0] if dns_services else None
 
-    incidents_by_date = _deduplicate_past_incidents(past_incidents)
+    incidents_by_date = deduplicate_past_incidents(past_incidents)
 
     if active_incidents:
         overall = "major_outage"
@@ -884,6 +491,13 @@ def api_health():
     )
 
 
+@app.route("/api/health/scheduler")
+def api_scheduler_health():
+    health = get_scheduler_health()
+    code = 200 if health["status"] in {"healthy", "disabled"} else 503
+    return jsonify(health), code
+
+
 @app.route("/api/metrics")
 @login_required
 def api_metrics():
@@ -961,35 +575,6 @@ def admin_panel():
         "RESEND_API_KEY": bool(os.environ.get("RESEND_API_KEY")),
         "RESEND_FROM": os.environ.get("RESEND_FROM"),
     }
-    # Build feed coverage info for the backfill section
-    feed_coverage = []
-    for feed in STATUS_FEEDS:
-        svc_names_feed = set()
-        svc_names_feed.update(feed.get("components", {}).values())
-        svc_names_feed.update(feed.get("covered_services", []))
-        stats = get_feed_incident_stats(svc_names_feed)
-        capability = get_feed_backfill_capability(feed)
-        date_from = stats["oldest"][:10] if stats["oldest"] else None
-        date_to = stats["newest"][:10] if stats["newest"] else None
-        days_span = None
-        if date_from and date_to:
-            d0 = datetime.strptime(date_from, "%Y-%m-%d")
-            d1 = datetime.strptime(date_to, "%Y-%m-%d")
-            days_span = (d1 - d0).days
-        feed_coverage.append(
-            {
-                "name": feed["name"],
-                "incident_count": stats["cnt"],
-                "date_from": date_from,
-                "date_to": date_to,
-                "days_span": days_span,
-                "feed_type": capability["feed_type"],
-                "ingestion": capability["ingestion"],
-                "known_limit_days": capability["known_limit_days"],
-                "cap_type": capability["cap_type"],
-                "cap_summary": capability["cap_summary"],
-            }
-        )
 
     return render_template(
         "admin.html",
@@ -997,7 +582,7 @@ def admin_panel():
         recent_incidents=recent,
         services=svc_names,
         config=integrations,
-        feed_coverage=feed_coverage,
+        feed_coverage=build_feed_coverage(STATUS_FEEDS),
     )
 
 
@@ -1195,7 +780,15 @@ def _startup():
             "Startup: %d service-days with no check data (shown as no-data)", gap_days
         )
 
-    return start_scheduler()
+    return create_scheduler(
+        app=app,
+        services=all_services(),
+        dns_bar=DNS_BAR,
+        status_feeds=STATUS_FEEDS,
+        prune_login_failures=_prune_login_failures,
+        logger=logger,
+        incident_threshold=INCIDENT_THRESHOLD,
+    )
 
 
 # Run startup when the module loads (works with both `flask run` and `python app.py`)
@@ -1203,6 +796,7 @@ def _startup():
 if os.environ.get("DISABLE_SCHEDULER"):
     # E2E test mode: init DB but skip scheduler to avoid background writes
     init_db()
+    mark_scheduler_disabled()
     _scheduler = None
 elif os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
     _scheduler = _startup()

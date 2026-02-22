@@ -20,23 +20,46 @@ def _sync_existing_incident(existing, item, svc_ext_id):
     """Apply feed status/impact changes to an already-imported incident."""
     previous_status = existing["status"]
     new_status = item["status"]
-    if existing["status"] != item["status"]:
+    if previous_status != new_status:
         update_incident(
             existing["id"],
-            status=item["status"],
-            message=f"Status changed to {item['status']} (via {item['source']} status page).",
+            status=new_status,
+            message=f"Status changed to {new_status} (via {item['source']} status page).",
             resolved_at=item.get("resolved_at"),
         )
         logger.info(
             "Updated incident #%d (%s) to %s",
             existing["id"],
             svc_ext_id,
-            item["status"],
+            new_status,
         )
     new_impact = item.get("impact", "minor")
     if existing["impact"] != new_impact:
         update_incident_impact(existing["id"], new_impact)
     return previous_status, new_status
+
+
+def _handle_post_sync_alerts(existing, item, previous_status, new_status, svc_name):
+    """Send alerts for status transitions on feed-synced incidents."""
+    if previous_status == new_status:
+        return
+    if new_status == "resolved":
+        send_resolution(
+            incident_id=existing["id"],
+            message=f"Resolved (via {item.get('source', 'external')} status page).",
+            jira_key=existing.get("jira_key"),
+        )
+        return
+    if previous_status == "resolved":
+        jira_key = send_alerts(
+            incident_id=existing["id"],
+            title=item["title"],
+            impact=item.get("impact", "minor"),
+            message=f"Incident reopened (via {item.get('source', 'external')} status page).",
+            service=svc_name,
+        )
+        if jira_key:
+            set_incident_jira_key(existing["id"], jira_key)
 
 
 def poll_status_feed(feed_config):
@@ -71,22 +94,9 @@ def poll_status_feed(feed_config):
                 previous_status, new_status = _sync_existing_incident(
                     existing, item, svc_ext_id
                 )
-                if previous_status != new_status and new_status == "resolved":
-                    send_resolution(
-                        incident_id=existing["id"],
-                        message=f"Resolved (via {item.get('source', 'external')} status page).",
-                        jira_key=existing.get("jira_key"),
-                    )
-                elif previous_status == "resolved" and new_status != "resolved":
-                    jira_key = send_alerts(
-                        incident_id=existing["id"],
-                        title=item["title"],
-                        impact=item.get("impact", "minor"),
-                        message=f"Incident reopened (via {item.get('source', 'external')} status page).",
-                        service=svc_name,
-                    )
-                    if jira_key:
-                        set_incident_jira_key(existing["id"], jira_key)
+                _handle_post_sync_alerts(
+                    existing, item, previous_status, new_status, svc_name
+                )
                 continue
 
             try:
@@ -106,7 +116,12 @@ def poll_status_feed(feed_config):
                 existing = get_incident_by_external_id(svc_ext_id)
                 if not existing:
                     raise
-                _sync_existing_incident(existing, item, svc_ext_id)
+                previous_status, new_status = _sync_existing_incident(
+                    existing, item, svc_ext_id
+                )
+                _handle_post_sync_alerts(
+                    existing, item, previous_status, new_status, svc_name
+                )
                 logger.info(
                     "Skipped duplicate incident insert for %s (existing id=%d)",
                     svc_ext_id,

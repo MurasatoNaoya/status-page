@@ -1832,3 +1832,73 @@ class TestPollStatusFeed:
             poll_status_feed({"name": "TestFeed"})
 
         mock_resolution.assert_called_once()
+
+    def test_existing_resolved_feed_incident_reopen_sends_alert(self):
+        from status_page.feed_importer import poll_status_feed
+
+        database.create_incident(
+            title="Resolved feed incident",
+            external_id="reopen-me:Svc",
+            service_name="Svc",
+            status="resolved",
+            jira_key="OPS-777",
+        )
+        feed_results = [
+            {
+                "external_id": "reopen-me",
+                "title": "Resolved feed incident",
+                "status": "investigating",
+                "impact": "major",
+                "services": ["Svc"],
+                "updates": [],
+                "source": "TestFeed",
+            }
+        ]
+        with (
+            patch("status_page.feed_importer.poll_feed", return_value=feed_results),
+            patch("status_page.feed_importer.send_alerts", return_value=None) as mock_alerts,
+        ):
+            poll_status_feed({"name": "TestFeed"})
+
+        mock_alerts.assert_called_once()
+
+    def test_integrity_race_path_applies_reopen_alert_logic(self):
+        from status_page.feed_importer import poll_status_feed
+        import sqlite3
+
+        feed_results = [
+            {
+                "external_id": "race-id",
+                "title": "Race incident",
+                "status": "investigating",
+                "impact": "partial",
+                "services": ["Svc"],
+                "updates": [],
+                "source": "TestFeed",
+            }
+        ]
+        existing = {
+            "id": 99,
+            "status": "resolved",
+            "impact": "minor",
+            "jira_key": "OPS-99",
+        }
+        with (
+            patch("status_page.feed_importer.poll_feed", return_value=feed_results),
+            patch(
+                "status_page.feed_importer.get_incident_by_external_id",
+                side_effect=[None, existing],
+            ),
+            patch(
+                "status_page.feed_importer.create_incident",
+                side_effect=sqlite3.IntegrityError(),
+            ),
+            patch(
+                "status_page.feed_importer._sync_existing_incident",
+                return_value=("resolved", "investigating"),
+            ),
+            patch("status_page.feed_importer.send_alerts", return_value=None) as mock_alerts,
+        ):
+            poll_status_feed({"name": "TestFeed"})
+
+        mock_alerts.assert_called_once()

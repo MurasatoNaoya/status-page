@@ -2,6 +2,10 @@
 
 > **Purpose of this document**: Get a future Claude Code or Codex instance fully up to speed on the codebase, architecture, rules, and upcoming work (private link DNS resolution, Azure Service Health API, Azure Resource Health).
 
+Execution note:
+- Use `docs/WORK-LAPTOP-HANDOFF.md` for strict operational rollout steps.
+- Use `docs/ENGINEERING-ISSUES.md` for prioritized structural/code-quality improvements.
+
 ---
 
 ## Agent Handoff Snapshot (Read First)

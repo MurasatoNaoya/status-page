@@ -89,8 +89,10 @@ class TestAPIRoutes:
         assert resp.status_code == 401
 
     def test_create_incident_api(self, app_client):
+        csrf_token = "test-csrf-token"
         with app_client.session_transaction() as sess:
             sess["admin"] = True
+            sess["_csrf_token"] = csrf_token
         resp = app_client.post(
             "/api/incidents",
             json={
@@ -98,22 +100,38 @@ class TestAPIRoutes:
                 "impact": "partial",
                 "message": "Testing",
             },
+            headers={"X-CSRF-Token": csrf_token},
         )
         assert resp.status_code == 201
         data = resp.get_json()
         assert "id" in data
 
-    def test_update_incident_api(self, app_client):
+    def test_create_incident_api_missing_csrf(self, app_client):
         with app_client.session_transaction() as sess:
             sess["admin"] = True
+        resp = app_client.post(
+            "/api/incidents",
+            json={"title": "Test Incident"},
+        )
+        assert resp.status_code == 403
+
+    def test_update_incident_api(self, app_client):
+        csrf_token = "test-csrf-token"
+        with app_client.session_transaction() as sess:
+            sess["admin"] = True
+            sess["_csrf_token"] = csrf_token
         # Create first
         resp = app_client.post(
-            "/api/incidents", json={"title": "Update Test", "message": "init"}
+            "/api/incidents",
+            json={"title": "Update Test", "message": "init"},
+            headers={"X-CSRF-Token": csrf_token},
         )
         inc_id = resp.get_json()["id"]
         # Update
         resp = app_client.patch(
-            f"/api/incidents/{inc_id}", json={"status": "resolved", "message": "Fixed"}
+            f"/api/incidents/{inc_id}",
+            json={"status": "resolved", "message": "Fixed"},
+            headers={"X-CSRF-Token": csrf_token},
         )
         assert resp.status_code == 200
 

@@ -5,7 +5,6 @@ import os
 import secrets
 import threading
 import time
-from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 
@@ -23,7 +22,6 @@ from flask import (
 )
 
 from checker import check_dns_bar, run_check
-from social import search_outage_chatter
 from status_feeds import poll_feed
 from database import (
     backfill_check_gaps,
@@ -32,8 +30,6 @@ from database import (
     create_incident,
     get_db,
     get_feed_incident_stats,
-    get_page_view_stats,
-    record_page_view,
     get_active_incident_for_service,
     get_active_incidents,
     get_check_coverage_start,
@@ -54,6 +50,9 @@ from database import (
 # Number of consecutive failures before auto-creating an incident
 INCIDENT_THRESHOLD = 3
 
+# Valid incident status values
+_VALID_STATUSES = {"investigating", "identified", "monitoring", "resolved"}
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -70,7 +69,7 @@ ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
 ADMIN_PASS = os.environ.get("ADMIN_PASS", "changeme")
 
 # Brute-force protection: track failed login attempts per IP
-_login_failures = defaultdict(list)  # ip -> [timestamp, ...]
+_login_failures = {}  # ip -> [timestamp, ...]
 _login_lock = threading.Lock()
 _LOGIN_MAX_ATTEMPTS = 5
 _LOGIN_WINDOW_SECONDS = 300  # 5 minutes
@@ -95,6 +94,16 @@ def _check_csrf_token():
 app.jinja_env.globals["csrf_token"] = _get_csrf_token
 
 
+@app.after_request
+def set_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:"
+    )
+    return response
+
+
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -106,37 +115,6 @@ def login_required(f):
 
     return decorated
 
-
-def _anonymize_ip(ip):
-    """Anonymize IP by zeroing the last octet (IPv4) or last 80 bits (IPv6)."""
-    if not ip:
-        return None
-    if ":" in ip:
-        # IPv6: keep first 48 bits (3 groups), zero the rest
-        parts = ip.split(":")
-        return ":".join(parts[:3] + ["0"] * (len(parts) - 3))
-    # IPv4: zero last octet
-    parts = ip.rsplit(".", 1)
-    return parts[0] + ".0" if len(parts) == 2 else ip
-
-
-@app.before_request
-def track_page_view():
-    # Only track actual page views (GET), not static files, API calls, or form POSTs
-    if request.method != "GET":
-        return
-    if (
-        request.path.startswith("/static")
-        or request.path.startswith("/api")
-        or request.path == "/favicon.ico"
-    ):
-        return
-    record_page_view(
-        path=request.path,
-        ip=_anonymize_ip(request.remote_addr),
-        user_agent=str(request.user_agent)[:200],
-        referrer=request.referrer[:200] if request.referrer else None,
-    )
 
 
 @app.template_filter("gmt")
@@ -594,7 +572,6 @@ def build_service_data(svc_list, latest, incidents_by_day=None, coverage_start=N
 
         # Badge reflects the CURRENT status (latest check), not averages
         current_status = "operational"
-        social_posts = []
         if not status_info:
             current_status = "no_data"
         elif status_info["status"] != "up":
@@ -612,9 +589,6 @@ def build_service_data(svc_list, latest, incidents_by_day=None, coverage_start=N
                 # No active incident yet, but latest check failed — degraded
                 current_status = "degraded"
             all_operational = False
-            social_posts = search_outage_chatter(
-                name, keywords=svc.get("social_keywords")
-            )
         elif not has_history:
             current_status = "no_data"
 
@@ -628,7 +602,6 @@ def build_service_data(svc_list, latest, incidents_by_day=None, coverage_start=N
                 else None,
                 "error": status_info["error_message"] if status_info else None,
                 "days": days_array,
-                "social_posts": social_posts,
             }
         )
 
@@ -824,16 +797,30 @@ def index():
 # --- API for managing incidents ---
 
 
+def _check_api_csrf():
+    """Validate CSRF token from X-CSRF-Token header for JSON API endpoints."""
+    token = request.headers.get("X-CSRF-Token", "")
+    expected = session.get("_csrf_token", "")
+    if not token or not expected or not hmac.compare_digest(token, expected):
+        return False
+    return True
+
+
 @app.route("/api/incidents", methods=["POST"])
 @login_required
 def api_create_incident():
+    if not _check_api_csrf():
+        return jsonify({"error": "Missing or invalid CSRF token"}), 403
     data = request.json
     if not data or "title" not in data:
         return jsonify({"error": "Missing required field: title"}), 400
+    impact = data.get("impact", "minor")
+    if impact not in {"major", "partial", "minor"}:
+        return jsonify({"error": "Invalid impact. Must be one of: major, minor, partial"}), 400
     incident_id = create_incident(
-        title=data["title"],
-        impact=data.get("impact", "minor"),
-        message=data.get("message", "Investigating the issue."),
+        title=data["title"][:255],
+        impact=impact,
+        message=data.get("message", "Investigating the issue.")[:2000],
         service_name=data.get("service_name"),
     )
     return jsonify({"id": incident_id}), 201
@@ -842,10 +829,14 @@ def api_create_incident():
 @app.route("/api/incidents/<int:incident_id>", methods=["PATCH"])
 @login_required
 def api_update_incident(incident_id):
+    if not _check_api_csrf():
+        return jsonify({"error": "Missing or invalid CSRF token"}), 403
     data = request.json
     if not data or "status" not in data or "message" not in data:
         return jsonify({"error": "Missing required fields: status, message"}), 400
-    update_incident(incident_id, status=data["status"], message=data["message"])
+    if data["status"] not in _VALID_STATUSES:
+        return jsonify({"error": f"Invalid status. Must be one of: {', '.join(sorted(_VALID_STATUSES))}"}), 400
+    update_incident(incident_id, status=data["status"], message=data["message"][:2000])
     return jsonify({"ok": True})
 
 
@@ -881,10 +872,12 @@ def admin_login():
 
         with _login_lock:
             # Prune old attempts and check rate limit
-            _login_failures[ip] = [
-                t for t in _login_failures[ip] if now - t < _LOGIN_WINDOW_SECONDS
+            attempts = [
+                t for t in _login_failures.get(ip, []) if now - t < _LOGIN_WINDOW_SECONDS
             ]
-            if not _login_failures[ip]:
+            if attempts:
+                _login_failures[ip] = attempts
+            else:
                 _login_failures.pop(ip, None)
             if len(_login_failures.get(ip, [])) >= _LOGIN_MAX_ATTEMPTS:
                 flash("Too many login attempts. Please try again later.")
@@ -898,7 +891,7 @@ def admin_login():
             session["admin"] = True
             return redirect(url_for("admin_panel"))
         with _login_lock:
-            _login_failures[ip].append(now)
+            _login_failures.setdefault(ip, []).append(now)
         flash("Invalid credentials")
     return render_template("admin_login.html")
 
@@ -992,17 +985,6 @@ def admin_declare_incident():
     return redirect(url_for("admin_panel"))
 
 
-@app.route("/admin/metrics")
-@login_required
-def admin_metrics():
-    try:
-        days = int(request.args.get("days", 30))
-    except (ValueError, TypeError):
-        days = 30
-    days = max(1, min(days, 365))
-    stats = get_page_view_stats(days=days)
-    return render_template("admin_metrics.html", stats=stats, days=days)
-
 
 @app.route("/admin/update/<int:incident_id>", methods=["POST"])
 @login_required
@@ -1011,7 +993,10 @@ def admin_update_incident(incident_id):
         flash("Invalid form submission. Please try again.")
         return redirect(url_for("admin_panel"))
     status = request.form["status"]
-    message = request.form["message"]
+    message = request.form["message"][:2000]
+    if status not in _VALID_STATUSES:
+        flash("Invalid status value.")
+        return redirect(url_for("admin_panel"))
     update_incident(incident_id, status=status, message=message)
 
     if status == "resolved":
@@ -1080,7 +1065,7 @@ def admin_feed_coverage():
 def _startup():
     """Initialise DB, clean orphans, backfill gaps, and start scheduler."""
     if ADMIN_PASS == "changeme":
-        if app.debug or os.environ.get("DISABLE_SCHEDULER"):
+        if os.environ.get("ALLOW_DEFAULT_PASSWORD"):
             logger.warning(
                 "*** Admin password is the default 'changeme'. "
                 "Set ADMIN_PASS env var for production. ***"
@@ -1088,7 +1073,8 @@ def _startup():
         else:
             raise RuntimeError(
                 "ADMIN_PASS is still 'changeme'. "
-                "Set the ADMIN_PASS environment variable before running in production."
+                "Set the ADMIN_PASS environment variable before running in production. "
+                "For local development, set ALLOW_DEFAULT_PASSWORD=1."
             )
     init_db()
 

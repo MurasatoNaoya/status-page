@@ -23,7 +23,7 @@ If you're a fresh agent session, this is the minimum context to avoid regression
 
 An internal status page for a CloudOps team. It monitors the health of cloud infrastructure (Azure UK South, GitHub, container registries) and displays a 90-day uptime history with incident timelines. Think of it as a self-hosted Statuspage.io that also aggregates incidents from upstream providers.
 
-**Stack**: Flask + SQLite + APScheduler + Gunicorn, ~10k lines, 226 unit tests + 72 E2E (Playwright).
+**Stack**: Flask + SQLite + APScheduler + Gunicorn, ~10k lines, 319 tests (unit/integration + E2E Playwright).
 
 **Repo structure** (as of `cf984cf`):
 
@@ -34,7 +34,7 @@ status_page/           # Application package
   checker.py           # Health check implementations (HTTP, TCP, DNS, script)
   status_feeds.py      # External feed polling (Statuspage, Status.io, Azure RSS)
   feed_importer.py     # Imports feed incidents into database
-  alerts.py            # Slack, Teams, Jira notifications
+  alerts.py            # Email, Slack, Teams, Jira notifications
   incident_service.py  # Incident lifecycle orchestration
   config_schema.py     # Config validation
   telemetry.py         # In-process counters and timings
@@ -48,7 +48,7 @@ tests/                 # All tests
   test_database.py     # Schema, queries, coverage, orphan cleanup
   test_checker.py      # All check types + env gating
   test_status_feeds.py # Feed parsers, Azure history, Status.io history
-  test_alerts.py       # Slack/Teams/Jira mocking
+  test_alerts.py       # Email/Slack/Teams/Jira mocking
   test_e2e.py          # Browser tests (dark mode, filters, incident UI)
   test_config_schema.py
   test_incident_service.py
@@ -101,7 +101,9 @@ APScheduler → feed_importer.poll_status_feed(feed_config)
   → For each incident:
       - Generate external_id: "{feed_id}:{service_name}"
       - If exists: sync status/impact changes
-      - If new: create_incident() with all updates
+      - If new active incident: create_incident() + send alerts
+      - If new resolved incident (historical): import only (no alert spam)
+      - On status transitions (active↔resolved): send reopen/resolution alerts
       - On IntegrityError: handle race (another worker inserted first)
 ```
 
@@ -141,9 +143,13 @@ Updates: Admin panel or API → update_incident()
 Resolve: Admin panel, API, or auto-recovery → resolve_incident_with_alerts()
 
 Alerts fire on declare and resolve:
+  → Email (Resend preferred, SMTP fallback)
   → Slack webhook (Block Kit message)
   → Teams webhook
   → Jira ticket (create on declare, comment+transition on resolve)
+
+Feed-imported incidents now use the same alert model for active/reopened/resolved
+transitions. Historical resolved backfill imports do not send alerts.
 ```
 
 ---
@@ -210,6 +216,7 @@ page:
 status_feeds:
   - name: "GitHub"
     url: "https://www.githubstatus.com/api/v2"    # Statuspage API
+    max_incident_pages: 10                         # Statuspage backfill depth
     components:
       "Actions": "GitHub Actions"                   # external_name: our_name
       "Git Operations": "GitHub Web Pages (github.com)"
@@ -383,6 +390,17 @@ status_feeds:
 ### Optional — Alerts
 | Variable | Purpose |
 |----------|---------|
+| `ALERT_EMAIL_TO` | Comma-separated alert recipients |
+| `RESEND_API_KEY` | Resend API key (preferred email transport) |
+| `RESEND_FROM` | Verified sender email for Resend |
+| `RESEND_REPLY_TO` | Optional reply-to address for Resend |
+| `SMTP_HOST` | SMTP host (fallback transport) |
+| `SMTP_PORT` | SMTP port (default `587`) |
+| `SMTP_USER` | SMTP username |
+| `SMTP_PASS` | SMTP password |
+| `SMTP_FROM` | SMTP sender address |
+| `SMTP_STARTTLS` | SMTP STARTTLS toggle (default true) |
+| `SMTP_SSL` | SMTP SSL toggle (default false) |
 | `SLACK_WEBHOOK_URL` | Slack incoming webhook |
 | `TEAMS_WEBHOOK_URL` | Teams incoming webhook |
 | `JIRA_URL` | e.g. `https://yourcompany.atlassian.net` |
@@ -537,6 +555,11 @@ Dark mode is implemented with CSS variables and a `data-theme` attribute on `<ht
 - `static/style.css` uses `[data-theme="dark"]` selectors for color overrides
 - The favicon changes accent color (green→blue) via JS rebuilding the SVG data URI
 - The header logo uses `stroke: var(--green)` with CSS transitions
+- Badge labels are normalized for clarity:
+  - `operational` → `Operational`
+  - `degraded` / `partial_outage` / `under_maintenance` → `Degraded`
+  - `major_outage` → `Outage`
+  - `no_data` → `No Data`
 
 ---
 
@@ -565,6 +588,7 @@ Timings: `checks.response_time_ms`, `jobs.{function_name}.ms`
 | POST | `/admin/declare` | Yes + CSRF | Declare incident |
 | POST | `/admin/update/<id>` | Yes + CSRF | Update incident |
 | POST | `/admin/backfill` | Yes + CSRF | Trigger feed backfill |
+| POST | `/admin/test-email` | Yes + CSRF | Send test email using configured transport |
 | GET | `/admin/feed-coverage` | Yes | Feed coverage JSON |
 
 ---
@@ -579,3 +603,167 @@ Before opening/merging:
 4. Validate no synthetic "up without response time" paths were introduced
 5. Validate off-VPN private checks are `skip`, not `down`
 6. Confirm no generated/local files are staged
+
+---
+
+## VPN Rollout Plan (Work Laptop + Private Checks)
+
+### Objective
+
+Enable and validate private-network monitoring safely on your work laptop/VPN, without regressing existing public-feed behavior or creating noisy alerts.
+
+### Phase 0: Preflight (Before touching config)
+
+1. Confirm runtime baseline on work laptop.
+   - `python3 --version`
+   - `pip --version`
+   - `./.venv/bin/python -V` (after venv setup)
+   - `sqlite3 --version`
+2. Pull latest `main`.
+   - `git pull origin main`
+   - Ensure clean tree: `git status --short` should be empty.
+3. Confirm secret posture.
+   - `ADMIN_PASS` strong, not default.
+   - `SECRET_KEY` set.
+   - Resend/SMTP configured.
+   - `ALLOW_DEFAULT_PASSWORD` not set in production-like run.
+4. Confirm you can reach private DNS/targets when VPN is up.
+   - `nslookup <private-hostname>`
+   - `dig <private-hostname>`
+   - `curl -I https://<private-endpoint>` (if HTTP)
+   - `nc -zv <host> <port>` (if TCP)
+
+### Phase 1: Work Laptop Deployment Mode
+
+1. Set env for VPN-aware monitoring.
+   - `ON_PRIVATE_NETWORK=1`
+   - production-like auth/env vars in `.env` (or shell export)
+2. Run app in production-like mode (recommended locally).
+   - Gunicorn path, single worker (scheduler safety):
+```bash
+OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES \
+ADMIN_PASS=... SECRET_KEY=... SESSION_COOKIE_SECURE=false \
+ON_PRIVATE_NETWORK=1 \
+gunicorn -c gunicorn.conf.py app:app
+```
+3. Confirm app/scheduler health.
+   - `/` loads
+   - `/admin` login works
+   - logs show scheduler started and checks running
+
+### Phase 2: Add Private Checks Safely (`requires_env`)
+
+1. Start with 1-2 low-risk private checks first.
+   - DNS private endpoint
+   - one HTTP/TCP internal dependency
+2. Add with explicit gating in `status_page/config.yaml`.
+   - DNS target example:
+```yaml
+- hostname: "mydb.privatelink.database.windows.net"
+  label: "DB Private Link"
+  requires_env: "ON_PRIVATE_NETWORK"
+```
+   - Service example:
+```yaml
+- name: "Internal API"
+  type: http
+  url: "https://internal-api.company.local/health"
+  requires_env: "ON_PRIVATE_NETWORK"
+  interval: 60
+```
+3. Keep intervals conservative initially.
+   - 60s is fine for key checks.
+   - 120-300s for heavier endpoints.
+4. Validate config before run.
+   - `./.venv/bin/pytest -q tests/test_config_schema.py`
+   - restart app after config changes.
+
+### Phase 3: Immediate Functional Validation (first 30-60 min)
+
+1. Verify private checks are active on VPN.
+   - New check rows appear in DB/logs.
+   - Status badges reflect real current state.
+   - No accidental down from unreachable-off-VPN if gating is set.
+2. Verify `requires_env` behavior explicitly.
+   - Stop app, unset `ON_PRIVATE_NETWORK`, restart.
+   - Private checks should be `skip` (not down).
+   - Re-enable `ON_PRIVATE_NETWORK` and confirm checks resume.
+3. Verify alert path once manually.
+   - Declare and resolve one test incident from `/admin`.
+   - Confirm email arrival and log entries.
+
+### Phase 4: 24–48h Observation Window
+
+#### What to watch
+
+1. Private checks on VPN
+   - expected latency and success rate
+   - no false negatives from DNS flaps
+2. Public feed behavior
+   - active feed incident => alert
+   - resolution transition => resolution alert
+   - historical backfill => no spam
+3. Data integrity/UI semantics
+   - no synthetic data
+   - pre-coverage days remain grey
+   - in-coverage/no-incident days show green
+
+#### Suggested cadence
+
+1. T+2h: quick sanity pass
+2. T+12h: overnight behavior check
+3. T+24h and T+48h: final review + decide promotion
+
+### Phase 5: Acceptance Criteria
+
+Ship-ready when all are true:
+
+1. Private checks stable over 24–48h.
+2. No misleading status transitions (especially VPN-dependent services).
+3. Email alerts received for:
+   - manual declare/resolve
+   - active public-feed incident + resolution
+4. No backfill alert spam.
+5. Admin UX clear:
+   - email transport/recipient visibility
+   - test email action works
+   - feed coverage readable
+
+### Phase 6: Operational Hardening
+
+1. Key hygiene
+   - rotate any exposed API keys
+   - keep only active keys
+2. Alert noise controls
+   - tune intervals/thresholds if needed
+   - avoid over-broad private targets initially
+3. Backups
+   - daily SQLite backup job
+   - keep last N backups
+4. Change discipline
+   - make one config change set at a time
+   - validate before adding more services
+
+### Phase 7: Rollback Plan (if noisy/broken)
+
+1. Quick rollback
+   - revert latest config commit
+   - restart service
+2. Narrow rollback
+   - disable only failing private checks
+   - keep public feeds running
+3. Data safety
+   - never fabricate checks
+   - preserve DB; restore from backup only if needed
+
+### Suggested Additions for Agent Sessions
+
+Add a small validation matrix in PR descriptions or notes with:
+
+1. `Service`
+2. `Type (dns/http/tcp)`
+3. `requires_env`
+4. `Expected on VPN`
+5. `Expected off VPN`
+6. `Alert expected?`
+7. `Validated (Y/N)`

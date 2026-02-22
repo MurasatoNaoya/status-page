@@ -6,6 +6,7 @@ from status_page.status_feeds import (
     poll_statuspage_api,
     poll_azure_rss,
     poll_feed,
+    get_feed_backfill_capability,
     _parse_azure_history,
     _match_azure_services,
     _parse_statusio_history,
@@ -138,6 +139,27 @@ class TestPollStatuspageAPI:
             results = poll_statuspage_api(feed)
 
         assert results == []
+
+
+class TestFeedBackfillCapability:
+    def test_statuspage_profile_defaults(self):
+        profile = get_feed_backfill_capability({"name": "GitHub"})
+        assert profile["feed_type"] == "statuspage"
+        assert profile["cap_type"] == "implementation_limited"
+        assert profile["known_limit_days"] is None
+
+    def test_override_profile_from_config(self):
+        profile = get_feed_backfill_capability(
+            {
+                "name": "Docker",
+                "type": "statusio",
+                "backfill_cap_days": 180,
+                "backfill_cap_summary": "Provider advertises 180-day history.",
+            }
+        )
+        assert profile["feed_type"] == "statusio"
+        assert profile["known_limit_days"] == 180
+        assert profile["cap_summary"] == "Provider advertises 180-day history."
 
     def test_matches_prefixed_subcomponents(self):
         """Components like 'Quay.io - API' should match config key 'Quay.io'."""

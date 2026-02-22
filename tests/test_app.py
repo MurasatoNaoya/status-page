@@ -267,12 +267,25 @@ class TestAdminOperations:
                     "newest": "2026-02-01T00:00:00Z",
                 },
             ),
+            patch.object(
+                app_module,
+                "get_feed_backfill_capability",
+                return_value={
+                    "feed_type": "statuspage",
+                    "ingestion": "Statuspage API (/incidents.json)",
+                    "known_limit_days": None,
+                    "cap_type": "implementation_limited",
+                    "cap_summary": "First incidents page only.",
+                },
+            ),
         ):
             resp = app_client.get("/admin/feed-coverage")
         assert resp.status_code == 200
         data = resp.get_json()
         assert data[0]["feed"] == "GitHub"
         assert data[0]["incident_count"] == 2
+        assert data[0]["feed_type"] == "statuspage"
+        assert data[0]["cap_type"] == "implementation_limited"
         assert "GitHub Actions" in data[0]["services"]
 
     def test_prune_login_failures_removes_stale_and_caps(self, app_client):

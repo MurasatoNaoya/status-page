@@ -25,6 +25,7 @@ from flask import (
 from status_page.checker import check_dns_bar, run_check
 from status_page.config_schema import validate_config
 from status_page.feed_importer import poll_status_feed
+from status_page.status_feeds import get_feed_backfill_capability
 from status_page.incident_service import (
     declare_incident_with_alerts,
     resolve_incident_with_alerts,
@@ -933,6 +934,7 @@ def admin_panel():
         svc_names_feed.update(feed.get("components", {}).values())
         svc_names_feed.update(feed.get("covered_services", []))
         stats = get_feed_incident_stats(svc_names_feed)
+        capability = get_feed_backfill_capability(feed)
         date_from = stats["oldest"][:10] if stats["oldest"] else None
         date_to = stats["newest"][:10] if stats["newest"] else None
         days_span = None
@@ -947,6 +949,11 @@ def admin_panel():
                 "date_from": date_from,
                 "date_to": date_to,
                 "days_span": days_span,
+                "feed_type": capability["feed_type"],
+                "ingestion": capability["ingestion"],
+                "known_limit_days": capability["known_limit_days"],
+                "cap_type": capability["cap_type"],
+                "cap_summary": capability["cap_summary"],
             }
         )
 
@@ -1067,9 +1074,15 @@ def admin_feed_coverage():
         svc_names.update(feed.get("components", {}).values())
         svc_names.update(feed.get("covered_services", []))
         stats = get_feed_incident_stats(svc_names)
+        capability = get_feed_backfill_capability(feed)
         coverage.append(
             {
                 "feed": feed.get("name"),
+                "feed_type": capability["feed_type"],
+                "ingestion": capability["ingestion"],
+                "known_limit_days": capability["known_limit_days"],
+                "cap_type": capability["cap_type"],
+                "cap_summary": capability["cap_summary"],
                 "services": sorted(svc_names),
                 "incident_count": stats["cnt"],
                 "oldest": stats["oldest"],

@@ -344,6 +344,13 @@
                                 (last {{ feed.days_span }} day{{ 's' if feed.days_span != 1 else '' }})
                             {% endif %}
                         {% endif %}
+                        &middot; {{ feed.ingestion }}
+                        {% if feed.known_limit_days is not none %}
+                            &middot; Max backfill {{ feed.known_limit_days }} days
+                        {% else %}
+                            &middot; Max backfill: provider/implementation dependent
+                        {% endif %}
+                        &middot; {{ feed.cap_summary }}
                     </span>
                 </div>
                 {% endfor %}

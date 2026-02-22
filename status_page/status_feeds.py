@@ -16,6 +16,69 @@ SESSION = requests.Session()
 SESSION.headers["User-Agent"] = "status-page/1.0"
 TIMEOUT = 15
 
+# Backfill capability profile by feed type.
+# These describe how far we can import *today* with the current adapter,
+# not a guaranteed provider retention contract.
+FEED_BACKFILL_CAPS = {
+    "statuspage": {
+        "ingestion": "Statuspage API (/incidents.json)",
+        "cap_type": "implementation_limited",
+        "known_limit_days": None,
+        "cap_summary": (
+            "First incidents page only (no pagination). "
+            "Range varies by provider/account."
+        ),
+    },
+    "statusio": {
+        "ingestion": "Status.io API + history page scrape",
+        "cap_type": "page_limited",
+        "known_limit_days": None,
+        "cap_summary": (
+            "Active incidents via API plus one history page scrape pass. "
+            "Range limited by rendered history content."
+        ),
+    },
+    "azure_rss": {
+        "ingestion": "Azure RSS + history page scrape",
+        "cap_type": "page_limited",
+        "known_limit_days": None,
+        "cap_summary": (
+            "Active incidents via RSS plus one history page scrape pass. "
+            "Range limited by Azure history page content."
+        ),
+    },
+    "azure_service_health": {
+        "ingestion": "Azure Service Health API",
+        "cap_type": "query_limited",
+        "known_limit_days": 365,
+        "cap_summary": "API supports querying up to 1 year of events per request window.",
+    },
+}
+
+
+def get_feed_backfill_capability(feed_config):
+    """Return a normalized backfill capability profile for a configured feed."""
+    feed_type = feed_config.get("type", "statuspage")
+    profile = dict(
+        FEED_BACKFILL_CAPS.get(
+            feed_type,
+            {
+                "ingestion": "Unknown",
+                "cap_type": "unknown",
+                "known_limit_days": None,
+                "cap_summary": "Unknown feed type; no capability profile available.",
+            },
+        )
+    )
+    # Allow explicit per-feed override in config.yaml when operators know
+    # a stronger/clearer contractual range for a specific provider.
+    if "backfill_cap_days" in feed_config:
+        profile["known_limit_days"] = feed_config.get("backfill_cap_days")
+    if "backfill_cap_summary" in feed_config:
+        profile["cap_summary"] = str(feed_config.get("backfill_cap_summary"))
+    profile["feed_type"] = feed_type
+    return profile
+
 
 def _strip_html(value):
     """Remove HTML tags and decode entities."""

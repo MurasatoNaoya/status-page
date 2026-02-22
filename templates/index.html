@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ page.get('title', 'Status') }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><path d='M32 6L4 20l28 14 28-14Z' fill='%23E04343'/><path d='M4 26l28 14 28-14' fill='none' stroke='%23E86235' stroke-width='4.5' stroke-linejoin='round'/><path d='M4 36l28 14 28-14' fill='none' stroke='%23FAA72A' stroke-width='4.5' stroke-linejoin='round'/><path d='M4 46l28 14 28-14' fill='none' stroke='%2376AD2A' stroke-width='4.5' stroke-linejoin='round'/></svg>">
+    <link id="favicon" rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><path d='M32 6L4 20l28 14 28-14Z' fill='%23E04343'/><path d='M4 26l28 14 28-14' fill='none' stroke='%23E86235' stroke-width='4.5' stroke-linejoin='round'/><path d='M4 36l28 14 28-14' fill='none' stroke='%23FAA72A' stroke-width='4.5' stroke-linejoin='round'/><path d='M4 46l28 14 28-14' fill='none' stroke='%2376AD2A' stroke-width='4.5' stroke-linejoin='round'/></svg>">
 </head>
 <body>
     {# Encode tooltip data as compact JSON attribute instead of inline HTML.
@@ -33,7 +33,7 @@
         <header>
             <div class="header-row">
                 <div>
-                    <h1><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="28" height="28" style="vertical-align: -4px; margin-right: 8px;"><path d="M32 6L4 20l28 14 28-14Z" fill="#E04343"/><path d="M4 26l28 14 28-14" fill="none" stroke="#E86235" stroke-width="4.5" stroke-linejoin="round"/><path d="M4 36l28 14 28-14" fill="none" stroke="#FAA72A" stroke-width="4.5" stroke-linejoin="round"/><path d="M4 46l28 14 28-14" fill="none" stroke="#76AD2A" stroke-width="4.5" stroke-linejoin="round"/></svg>{{ page.get('title', 'Status') }}</h1>
+                    <h1><svg class="status-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="28" height="28"><path d="M32 6L4 20l28 14 28-14Z" fill="#E04343"/><path class="status-logo-warm-1" d="M4 26l28 14 28-14"/><path class="status-logo-warm-2" d="M4 36l28 14 28-14"/><path class="status-logo-accent" d="M4 46l28 14 28-14"/></svg>{{ page.get('title', 'Status') }}</h1>
                 </div>
                 <div class="header-actions">
                     <a href="{{ url_for('admin_panel') }}" class="admin-link">Admin Panel</a>

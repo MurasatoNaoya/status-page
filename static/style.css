@@ -125,6 +125,26 @@ header h1 {
     letter-spacing: -0.03em;
 }
 
+.status-logo {
+    vertical-align: -4px;
+    margin-right: 8px;
+}
+
+.status-logo-warm-1,
+.status-logo-warm-2,
+.status-logo-accent {
+    fill: none;
+    stroke-width: 4.5;
+    stroke-linejoin: round;
+}
+
+.status-logo-warm-1 { stroke: #E86235; }
+.status-logo-warm-2 { stroke: #FAA72A; }
+.status-logo-accent {
+    stroke: var(--green);
+    transition: stroke 0.3s ease-out;
+}
+
 header p {
     color: var(--text-secondary);
     font-size: 14px;

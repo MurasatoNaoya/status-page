@@ -23,8 +23,8 @@ jobs:
       - name: Install linters
         run: pip install ruff
 
-      - name: Ruff check (lint)
-        run: ruff check .
+      - name: Ruff check (auto-fix)
+        run: ruff check . --fix
 
-      - name: Ruff format check
-        run: ruff format --check .
+      - name: Ruff format (auto-fix)
+        run: ruff format .

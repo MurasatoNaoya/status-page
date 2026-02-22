@@ -8,8 +8,13 @@ import subprocess
 import sys
 import tempfile
 import time
+from pathlib import Path
 
 import pytest
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 # Use an in-memory / temp DB for all tests
 os.environ["STATUS_DB"] = ""  # Will be overridden per-test
@@ -24,7 +29,7 @@ def _isolated_db(tmp_path, monkeypatch):
     db_path = str(tmp_path / "test.db")
     monkeypatch.setenv("STATUS_DB", db_path)
     # Re-import to pick up the new path
-    import database
+    import status_page.database as database
 
     database.DB_PATH = db_path
     database.init_db()
@@ -37,7 +42,7 @@ def app_client(monkeypatch):
     monkeypatch.setenv("ADMIN_USER", "admin")
     monkeypatch.setenv("ADMIN_PASS", "testpass")
     # Prevent scheduler from starting during tests
-    import app as app_module
+    import status_page.app as app_module
 
     app_module.app.config["TESTING"] = True
     with app_module.app.test_client() as client:
@@ -79,7 +84,7 @@ def live_server():
     flask_bin = os.path.join(os.path.dirname(sys.executable), "flask")
     proc = subprocess.Popen(
         [flask_bin, "run", "--host", "127.0.0.1", "--port", str(port)],
-        cwd=os.path.dirname(__file__),
+        cwd=str(Path(__file__).resolve().parent.parent),
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

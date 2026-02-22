@@ -2,7 +2,7 @@
 
 from unittest.mock import patch, MagicMock
 
-import alerts
+import status_page.alerts as alerts
 
 
 class TestSendAlerts:
@@ -32,7 +32,7 @@ class TestSendAlerts:
 
 class TestSlack:
     @patch.dict("os.environ", {"SLACK_WEBHOOK_URL": "https://hooks.slack.com/test"})
-    @patch("alerts.requests.post")
+    @patch("status_page.alerts.requests.post")
     def test_sends_block_kit_payload(self, mock_post):
         mock_post.return_value.raise_for_status = lambda: None
         alerts._send_slack(1, "Outage", "major", "Investigating", "MySvc")
@@ -42,13 +42,15 @@ class TestSlack:
         assert payload["blocks"][0]["type"] == "header"
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("alerts.requests.post")
+    @patch("status_page.alerts.requests.post")
     def test_skips_when_no_webhook(self, mock_post):
         alerts._send_slack(1, "Outage", "major", "msg", None)
         mock_post.assert_not_called()
 
     @patch.dict("os.environ", {"SLACK_WEBHOOK_URL": "https://hooks.slack.com/test"})
-    @patch("alerts.requests.post", side_effect=Exception("Connection refused"))
+    @patch(
+        "status_page.alerts.requests.post", side_effect=Exception("Connection refused")
+    )
     def test_handles_post_failure(self, mock_post):
         # Should not raise
         alerts._send_slack(1, "Outage", "major", "msg", None)
@@ -56,7 +58,7 @@ class TestSlack:
 
 class TestTeams:
     @patch.dict("os.environ", {"TEAMS_WEBHOOK_URL": "https://teams.webhook.test"})
-    @patch("alerts.requests.post")
+    @patch("status_page.alerts.requests.post")
     def test_sends_teams_payload(self, mock_post):
         mock_post.return_value.raise_for_status = lambda: None
         alerts._send_teams(1, "Outage", "partial", "Investigating", "Svc")
@@ -65,7 +67,7 @@ class TestTeams:
         assert "PARTIAL" in payload["text"]
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("alerts.requests.post")
+    @patch("status_page.alerts.requests.post")
     def test_skips_when_no_webhook(self, mock_post):
         alerts._send_teams(1, "Outage", "major", "msg", None)
         mock_post.assert_not_called()
@@ -81,7 +83,7 @@ class TestJira:
             "JIRA_TOKEN": "token123",
         },
     )
-    @patch("alerts.requests.post")
+    @patch("status_page.alerts.requests.post")
     def test_creates_jira_ticket(self, mock_post):
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"key": "OPS-42"}
@@ -104,7 +106,7 @@ class TestJira:
             "JIRA_TOKEN": "token123",
         },
     )
-    @patch("alerts.requests.post")
+    @patch("status_page.alerts.requests.post")
     def test_priority_mapping(self, mock_post):
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"key": "OPS-1"}
@@ -115,7 +117,7 @@ class TestJira:
         assert mock_post.call_args[1]["json"]["fields"]["priority"]["name"] == "Medium"
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("alerts.requests.post")
+    @patch("status_page.alerts.requests.post")
     def test_skips_when_not_configured(self, mock_post):
         alerts._create_jira_ticket(1, "T", "major", "m", None)
         mock_post.assert_not_called()
@@ -129,7 +131,7 @@ class TestJira:
             "JIRA_TOKEN": "token123",
         },
     )
-    @patch("alerts.requests.post", side_effect=Exception("Network error"))
+    @patch("status_page.alerts.requests.post", side_effect=Exception("Network error"))
     def test_handles_post_failure(self, mock_post):
         # Should not raise
         alerts._create_jira_ticket(1, "T", "major", "m", None)
@@ -143,13 +145,13 @@ class TestSendResolution:
             "TEAMS_WEBHOOK_URL": "https://teams.webhook.test",
         },
     )
-    @patch("alerts.requests.post")
+    @patch("status_page.alerts.requests.post")
     def test_sends_to_both_channels(self, mock_post):
         alerts.send_resolution(42, "Service recovered")
         assert mock_post.call_count == 2
 
     @patch.dict("os.environ", {}, clear=True)
-    @patch("alerts.requests.post")
+    @patch("status_page.alerts.requests.post")
     def test_skips_when_not_configured(self, mock_post):
         alerts.send_resolution(42, "recovered")
         mock_post.assert_not_called()
@@ -163,8 +165,8 @@ class TestSendResolution:
             "JIRA_TOKEN": "token123",
         },
     )
-    @patch("alerts.requests.get")
-    @patch("alerts.requests.post")
+    @patch("status_page.alerts.requests.get")
+    @patch("status_page.alerts.requests.post")
     def test_resolution_attempts_jira_comment_and_transition(self, mock_post, mock_get):
         mock_get.side_effect = [
             MagicMock(
@@ -193,8 +195,8 @@ class TestSendResolution:
             "JIRA_TOKEN": "token123",
         },
     )
-    @patch("alerts.requests.get")
-    @patch("alerts.requests.post")
+    @patch("status_page.alerts.requests.get")
+    @patch("status_page.alerts.requests.post")
     def test_resolution_uses_jira_key_without_search(self, mock_post, mock_get):
         mock_get.return_value = MagicMock(
             json=lambda: {"transitions": [{"id": "31", "name": "Done"}]},
@@ -217,8 +219,8 @@ class TestSendResolution:
             "JIRA_TOKEN": "token123",
         },
     )
-    @patch("alerts.requests.get")
-    @patch("alerts.requests.post")
+    @patch("status_page.alerts.requests.get")
+    @patch("status_page.alerts.requests.post")
     def test_resolution_falls_back_to_legacy_jql_when_labels_missing(
         self, mock_post, mock_get
     ):

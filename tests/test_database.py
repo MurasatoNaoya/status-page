@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 import sqlite3
 
-import database
+import status_page.database as database
 import pytest
 
 

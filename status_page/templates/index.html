@@ -548,7 +548,10 @@
                 setTimeout(function() {
                     var details = target.querySelector('.incident-details');
                     if (details && !details.hasAttribute('open')) animatedOpen(details);
-                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    // Keep the target near the top with a small breathing offset
+                    // instead of default scrollIntoView behavior.
+                    var topY = target.getBoundingClientRect().top + window.pageYOffset - 8;
+                    window.scrollTo({ top: Math.max(0, topY), behavior: 'smooth' });
                     target.classList.add('incident-highlight');
                     setTimeout(function() { target.classList.remove('incident-highlight'); }, 2000);
                 }, 50);

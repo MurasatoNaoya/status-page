@@ -2,7 +2,7 @@
 
 from unittest.mock import patch, MagicMock
 
-from status_feeds import (
+from status_page.status_feeds import (
     poll_statuspage_api,
     poll_azure_rss,
     poll_feed,
@@ -56,7 +56,7 @@ class TestPollStatuspageAPI:
             "url": "https://www.githubstatus.com/api/v2",
             "components": {"Actions": "GitHub Actions"},
         }
-        with patch("status_feeds.SESSION.get") as mock_get:
+        with patch("status_page.status_feeds.SESSION.get") as mock_get:
 
             def mock_response(url, **kwargs):
                 resp = MagicMock()
@@ -84,7 +84,7 @@ class TestPollStatuspageAPI:
             "url": "https://www.githubstatus.com/api/v2",
             "components": {"Actions": "GitHub Actions"},
         }
-        with patch("status_feeds.SESSION.get") as mock_get:
+        with patch("status_page.status_feeds.SESSION.get") as mock_get:
 
             def mock_response(url, **kwargs):
                 resp = MagicMock()
@@ -109,7 +109,7 @@ class TestPollStatuspageAPI:
             "url": "https://www.githubstatus.com/api/v2",
             "components": {"SomethingElse": "Mapped"},
         }
-        with patch("status_feeds.SESSION.get") as mock_get:
+        with patch("status_page.status_feeds.SESSION.get") as mock_get:
 
             def mock_response(url, **kwargs):
                 resp = MagicMock()
@@ -133,7 +133,7 @@ class TestPollStatuspageAPI:
             "url": "https://www.githubstatus.com/api/v2",
             "components": {"Actions": "GitHub Actions"},
         }
-        with patch("status_feeds.SESSION.get") as mock_get:
+        with patch("status_page.status_feeds.SESSION.get") as mock_get:
             mock_get.side_effect = Exception("Network error")
             results = poll_statuspage_api(feed)
 
@@ -170,7 +170,7 @@ class TestPollStatuspageAPI:
                 }
             ]
         }
-        with patch("status_feeds.SESSION.get") as mock_get:
+        with patch("status_page.status_feeds.SESSION.get") as mock_get:
 
             def mock_response(url, **kwargs):
                 resp = MagicMock()
@@ -209,7 +209,7 @@ class TestPollStatuspageAPI:
                 }
             ]
         }
-        with patch("status_feeds.SESSION.get") as mock_get:
+        with patch("status_page.status_feeds.SESSION.get") as mock_get:
 
             def mock_response(url, **kwargs):
                 resp = MagicMock()
@@ -248,7 +248,7 @@ class TestPollStatuspageAPI:
                 }
             ]
         }
-        with patch("status_feeds.SESSION.get") as mock_get:
+        with patch("status_page.status_feeds.SESSION.get") as mock_get:
 
             def mock_response(url, **kwargs):
                 resp = MagicMock()
@@ -291,7 +291,7 @@ class TestPollAzureRSS:
             "type": "azure_rss",
             "exclude_regions": [],
         }
-        with patch("status_feeds.SESSION.get") as mock_get:
+        with patch("status_page.status_feeds.SESSION.get") as mock_get:
             resp = MagicMock()
             resp.status_code = 200
             resp.text = MOCK_AZURE_RSS
@@ -310,7 +310,7 @@ class TestPollAzureRSS:
             "type": "azure_rss",
             "exclude_regions": ["West US 2"],
         }
-        with patch("status_feeds.SESSION.get") as mock_get:
+        with patch("status_page.status_feeds.SESSION.get") as mock_get:
             resp = MagicMock()
             resp.status_code = 200
             resp.text = MOCK_AZURE_RSS
@@ -330,7 +330,7 @@ class TestPollAzureRSS:
             "type": "azure_rss",
             "exclude_regions": [],
         }
-        with patch("status_feeds.SESSION.get") as mock_get:
+        with patch("status_page.status_feeds.SESSION.get") as mock_get:
             resp = MagicMock()
             resp.status_code = 200
             resp.text = MOCK_AZURE_RSS
@@ -348,7 +348,7 @@ class TestPollAzureRSS:
             "url": "https://azure.status.microsoft/feed",
             "type": "azure_rss",
         }
-        with patch("status_feeds.SESSION.get") as mock_get:
+        with patch("status_page.status_feeds.SESSION.get") as mock_get:
             mock_get.side_effect = Exception("SSL error")
             results = poll_azure_rss(feed)
 
@@ -357,13 +357,13 @@ class TestPollAzureRSS:
 
 class TestPollFeed:
     def test_dispatches_to_statuspage(self):
-        with patch("status_feeds.poll_statuspage_api") as mock:
+        with patch("status_page.status_feeds.poll_statuspage_api") as mock:
             mock.return_value = []
             poll_feed({"name": "GitHub", "url": "https://example.com"})
             mock.assert_called_once()
 
     def test_dispatches_to_azure_rss(self):
-        with patch("status_feeds.poll_azure_rss") as mock:
+        with patch("status_page.status_feeds.poll_azure_rss") as mock:
             mock.return_value = []
             poll_feed(
                 {"name": "Azure", "type": "azure_rss", "url": "https://example.com"}
@@ -452,7 +452,7 @@ class TestAzureRSSServiceMatching:
             "type": "azure_rss",
             "exclude_regions": [],
         }
-        with patch("status_feeds.SESSION.get") as mock_get:
+        with patch("status_page.status_feeds.SESSION.get") as mock_get:
             resp = MagicMock()
             resp.status_code = 200
             resp.text = rss_xml
@@ -479,7 +479,7 @@ class TestAzureRSSServiceMatching:
             "type": "azure_rss",
             "exclude_regions": [],
         }
-        with patch("status_feeds.SESSION.get") as mock_get:
+        with patch("status_page.status_feeds.SESSION.get") as mock_get:
             resp = MagicMock()
             resp.text = rss_xml
             resp.raise_for_status = MagicMock()

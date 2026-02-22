@@ -3,7 +3,7 @@
 from unittest.mock import patch, MagicMock
 import socket
 
-from checker import (
+from status_page.checker import (
     check_http,
     check_tcp,
     check_dns,
@@ -26,7 +26,7 @@ class TestCheckHTTP:
         assert "requires env ON_PRIVATE_NETWORK" in err
 
     def test_successful_check(self):
-        with patch("checker.requests.get") as mock_get:
+        with patch("status_page.checker.requests.get") as mock_get:
             mock_resp = MagicMock()
             mock_resp.status_code = 200
             mock_get.return_value = mock_resp
@@ -38,7 +38,7 @@ class TestCheckHTTP:
             assert err is None
 
     def test_wrong_status_code(self):
-        with patch("checker.requests.get") as mock_get:
+        with patch("status_page.checker.requests.get") as mock_get:
             mock_resp = MagicMock()
             mock_resp.status_code = 500
             mock_resp.text = "Internal Server Error"
@@ -48,7 +48,7 @@ class TestCheckHTTP:
             assert "HTTP 500" in err
 
     def test_rate_limit_treated_as_up(self):
-        with patch("checker.requests.get") as mock_get:
+        with patch("status_page.checker.requests.get") as mock_get:
             mock_resp = MagicMock()
             mock_resp.status_code = 403
             mock_resp.text = "API rate limit exceeded"
@@ -57,7 +57,7 @@ class TestCheckHTTP:
             assert status == "up"
 
     def test_rate_limit_429(self):
-        with patch("checker.requests.get") as mock_get:
+        with patch("status_page.checker.requests.get") as mock_get:
             mock_resp = MagicMock()
             mock_resp.status_code = 429
             mock_resp.text = "rate limit"
@@ -68,7 +68,7 @@ class TestCheckHTTP:
     def test_connection_error(self):
         import requests as req
 
-        with patch("checker.requests.get") as mock_get:
+        with patch("status_page.checker.requests.get") as mock_get:
             mock_get.side_effect = req.RequestException("Connection refused")
             status, ms, err = check_http({"url": "https://example.com"})
             assert status == "down"
@@ -77,7 +77,7 @@ class TestCheckHTTP:
 
     def test_auth_token_env(self):
         with (
-            patch("checker.requests.get") as mock_get,
+            patch("status_page.checker.requests.get") as mock_get,
             patch.dict("os.environ", {"MY_TOKEN": "secret123"}),
         ):
             mock_resp = MagicMock()
@@ -88,7 +88,7 @@ class TestCheckHTTP:
             assert call_kwargs[1]["headers"]["Authorization"] == "token secret123"
 
     def test_custom_expected_status(self):
-        with patch("checker.requests.get") as mock_get:
+        with patch("status_page.checker.requests.get") as mock_get:
             mock_resp = MagicMock()
             mock_resp.status_code = 401
             mock_get.return_value = mock_resp
@@ -98,7 +98,7 @@ class TestCheckHTTP:
             assert status == "up"
 
     def test_http_check_disables_redirects(self):
-        with patch("checker.requests.get") as mock_get:
+        with patch("status_page.checker.requests.get") as mock_get:
             mock_resp = MagicMock()
             mock_resp.status_code = 200
             mock_get.return_value = mock_resp
@@ -116,7 +116,7 @@ class TestCheckTCP:
         assert "requires env ON_PRIVATE_NETWORK" in err
 
     def test_successful_connection(self):
-        with patch("checker.socket.create_connection") as mock_conn:
+        with patch("status_page.checker.socket.create_connection") as mock_conn:
             mock_sock = MagicMock()
             mock_conn.return_value = mock_sock
             status, ms, err = check_tcp({"host": "localhost", "port": 5555})
@@ -124,7 +124,7 @@ class TestCheckTCP:
             mock_sock.close.assert_called_once()
 
     def test_connection_refused(self):
-        with patch("checker.socket.create_connection") as mock_conn:
+        with patch("status_page.checker.socket.create_connection") as mock_conn:
             mock_conn.side_effect = OSError("Connection refused")
             status, ms, err = check_tcp({"host": "localhost", "port": 9999})
             assert status == "down"
@@ -141,14 +141,14 @@ class TestCheckDNS:
         assert "requires env ON_PRIVATE_NETWORK" in err
 
     def test_successful_resolution(self):
-        with patch("checker.socket.getaddrinfo") as mock_dns:
+        with patch("status_page.checker.socket.getaddrinfo") as mock_dns:
             mock_dns.return_value = [("AF_INET", None, None, None, ("1.2.3.4", 0))]
             status, ms, err = check_dns({"hostname": "example.com"})
             assert status == "up"
             assert err is None
 
     def test_resolution_failure(self):
-        with patch("checker.socket.getaddrinfo") as mock_dns:
+        with patch("status_page.checker.socket.getaddrinfo") as mock_dns:
             mock_dns.side_effect = socket.gaierror("Name resolution failed")
             status, ms, err = check_dns({"hostname": "nonexistent.invalid"})
             assert status == "down"
@@ -187,7 +187,7 @@ class TestCheckDNSBar:
         assert "requires env ON_PRIVATE_NETWORK" in (results[0]["error"] or "")
 
     def test_all_targets_up(self):
-        with patch("checker.socket.getaddrinfo") as mock_dns:
+        with patch("status_page.checker.socket.getaddrinfo") as mock_dns:
             mock_dns.return_value = [("AF_INET", None, None, None, ("1.2.3.4", 0))]
             results = check_dns_bar(
                 [
@@ -205,7 +205,7 @@ class TestCheckDNSBar:
                 raise socket.gaierror("failed")
             return [("AF_INET", None, None, None, ("1.2.3.4", 0))]
 
-        with patch("checker.socket.getaddrinfo", side_effect=side_effect):
+        with patch("status_page.checker.socket.getaddrinfo", side_effect=side_effect):
             results = check_dns_bar(
                 [
                     {"hostname": "good.com", "label": "Good"},
@@ -224,7 +224,7 @@ class TestRunCheck:
         assert "Unknown" in err
 
     def test_defaults_to_http(self):
-        with patch("checker.requests.get") as mock_get:
+        with patch("status_page.checker.requests.get") as mock_get:
             mock_resp = MagicMock()
             mock_resp.status_code = 200
             mock_get.return_value = mock_resp

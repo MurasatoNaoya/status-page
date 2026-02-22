@@ -1,7 +1,7 @@
 """Incident orchestration helpers."""
 
-from alerts import send_alerts, send_resolution
-from database import (
+from status_page.alerts import send_alerts, send_resolution
+from status_page.database import (
     create_incident,
     get_incident,
     set_incident_jira_key,

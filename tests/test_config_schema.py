@@ -1,6 +1,6 @@
 import pytest
 
-from config_schema import validate_config
+from status_page.config_schema import validate_config
 
 
 def test_validate_config_accepts_minimal():

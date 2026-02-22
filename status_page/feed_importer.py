@@ -3,13 +3,13 @@
 import logging
 import sqlite3
 
-from database import (
+from status_page.database import (
     create_incident,
     get_incident_by_external_id,
     update_incident,
     update_incident_impact,
 )
-from status_feeds import poll_feed
+from status_page.status_feeds import poll_feed
 
 logger = logging.getLogger(__name__)
 

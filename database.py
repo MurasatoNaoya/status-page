@@ -49,11 +49,7 @@ def get_query_db():
 
 
 def get_request_db():
-    """Return a request-scoped connection (stored on Flask ``g``).
-
-    Falls back to a fresh connection when called outside a Flask request
-    context (e.g. from the scheduler or CLI scripts).
-    """
+    """Return a request-scoped connection (stored on Flask ``g``)."""
     try:
         from flask import g, has_app_context
 
@@ -63,8 +59,10 @@ def get_request_db():
             return g._db
     except ImportError:
         pass
-    # Outside Flask — return a one-off connection (caller must close)
-    return _make_connection()
+    raise RuntimeError(
+        "get_request_db() requires an active Flask app/request context. "
+        "Use get_query_db() or get_db() outside request handlers."
+    )
 
 
 def close_request_db(exception=None):
@@ -121,6 +119,8 @@ def init_db():
                 ON incident_updates(incident_id);
             CREATE INDEX IF NOT EXISTS idx_incidents_service_name
                 ON incidents(service_name, resolved_at);
+            CREATE INDEX IF NOT EXISTS idx_incidents_created_at
+                ON incidents(created_at);
         """)
         # Migrations for existing DBs
         try:
@@ -681,38 +681,37 @@ def cleanup_orphan_services(valid_service_names):
     Returns the total count of deleted rows across both tables.
     """
     valid = set(valid_service_names)
+    if not valid:
+        raise ValueError(
+            "Refusing orphan cleanup with empty valid_service_names. "
+            "This could delete all data."
+        )
     deleted = 0
 
     with get_db() as db:
-        if not valid:
-            # Nothing is valid — delete everything
-            deleted += db.execute("DELETE FROM check_results").rowcount
-            db.execute("DELETE FROM incident_updates")
-            deleted += db.execute("DELETE FROM incidents").rowcount
-        else:
-            placeholders = ",".join("?" for _ in valid)
-            params = list(valid)
-            orphan_ids = [
-                r[0]
-                for r in db.execute(
-                    f"SELECT id FROM incidents WHERE service_name IS NOT NULL AND service_name NOT IN ({placeholders})",
-                    params,
-                ).fetchall()
-            ]
-            if orphan_ids:
-                upd_placeholders = ",".join("?" for _ in orphan_ids)
-                db.execute(
-                    f"DELETE FROM incident_updates WHERE incident_id IN ({upd_placeholders})",
-                    orphan_ids,
-                )
-            deleted += db.execute(
-                f"DELETE FROM check_results WHERE service_name NOT IN ({placeholders})",
+        placeholders = ",".join("?" for _ in valid)
+        params = list(valid)
+        orphan_ids = [
+            r[0]
+            for r in db.execute(
+                f"SELECT id FROM incidents WHERE service_name IS NOT NULL AND service_name NOT IN ({placeholders})",
                 params,
-            ).rowcount
-            deleted += db.execute(
-                f"DELETE FROM incidents WHERE service_name IS NOT NULL AND service_name NOT IN ({placeholders})",
-                params,
-            ).rowcount
+            ).fetchall()
+        ]
+        if orphan_ids:
+            upd_placeholders = ",".join("?" for _ in orphan_ids)
+            db.execute(
+                f"DELETE FROM incident_updates WHERE incident_id IN ({upd_placeholders})",
+                orphan_ids,
+            )
+        deleted += db.execute(
+            f"DELETE FROM check_results WHERE service_name NOT IN ({placeholders})",
+            params,
+        ).rowcount
+        deleted += db.execute(
+            f"DELETE FROM incidents WHERE service_name IS NOT NULL AND service_name NOT IN ({placeholders})",
+            params,
+        ).rowcount
         if deleted > 0:
             db.execute("PRAGMA optimize")
 

@@ -316,10 +316,16 @@ class TestCleanupOrphanServices:
         assert database.get_active_incident_for_service("ValidSvc") is not None
         assert database.get_active_incident_for_service("GoneSvc") is None
 
-    def test_empty_valid_set_removes_all(self):
+    def test_empty_valid_set_raises(self):
         database.record_check("Svc", "up", 10.0, None)
-        deleted = database.cleanup_orphan_services([])
-        assert deleted >= 1
+        with pytest.raises(ValueError):
+            database.cleanup_orphan_services([])
+
+
+class TestRequestDbGuard:
+    def test_get_request_db_raises_outside_flask_context(self):
+        with pytest.raises(RuntimeError):
+            database.get_request_db()
 
 
 class TestGetIncidentsByDay:

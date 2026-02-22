@@ -30,7 +30,9 @@ def check_http(service):
             headers["Authorization"] = f"token {token}"
     try:
         start = time.monotonic()
-        resp = requests.get(url, timeout=timeout, allow_redirects=True, headers=headers)
+        resp = requests.get(
+            url, timeout=timeout, allow_redirects=False, headers=headers
+        )
         elapsed_ms = (time.monotonic() - start) * 1000
         if resp.status_code == expected_status:
             return "up", elapsed_ms, None

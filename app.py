@@ -255,12 +255,12 @@ def run_service_check(service):
     else:
         # Service recovered — auto-resolve any active incident
         if active:
-            update_incident(
-                active["id"],
-                status="resolved",
+            resolved = resolve_incident_with_alerts(
+                incident_id=active["id"],
                 message="Service has recovered. Automatically resolved.",
             )
-            logger.info("Auto-resolved incident #%d for %s", active["id"], name)
+            if resolved:
+                logger.info("Auto-resolved incident #%d for %s", active["id"], name)
 
 
 def all_services():
@@ -299,12 +299,12 @@ def run_dns_bar_check():
         # Auto-resolve DNS incident if active
         active = get_active_incident_for_service(name)
         if active:
-            update_incident(
-                active["id"],
-                status="resolved",
+            resolved = resolve_incident_with_alerts(
+                incident_id=active["id"],
                 message="All DNS targets resolving normally. Automatically resolved.",
             )
-            logger.info("Auto-resolved DNS incident #%d", active["id"])
+            if resolved:
+                logger.info("Auto-resolved DNS incident #%d", active["id"])
     else:
         failed_labels = ", ".join(r["label"] for r in failed)
         error_msg = f"{failed_count}/{total} failed: {failed_labels}"
@@ -1110,9 +1110,14 @@ def _startup():
         "yes",
     )
     if cleanup_enabled:
-        orphan_result = cleanup_orphan_services(valid_names)
-        if orphan_result:
-            logger.info("Startup cleanup: removed %d orphan rows", orphan_result)
+        if not valid_names:
+            logger.warning(
+                "Startup cleanup: skipped orphan cleanup because valid service list is empty"
+            )
+        else:
+            orphan_result = cleanup_orphan_services(valid_names)
+            if orphan_result:
+                logger.info("Startup cleanup: removed %d orphan rows", orphan_result)
     else:
         logger.info(
             "Startup cleanup: skipped orphan cleanup (set CLEANUP_ORPHANS_ON_STARTUP=1 to enable)"

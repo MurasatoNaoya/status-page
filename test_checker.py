@@ -97,6 +97,14 @@ class TestCheckHTTP:
             )
             assert status == "up"
 
+    def test_http_check_disables_redirects(self):
+        with patch("checker.requests.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_get.return_value = mock_resp
+            check_http({"url": "https://example.com"})
+            assert mock_get.call_args.kwargs["allow_redirects"] is False
+
 
 class TestCheckTCP:
     def test_skips_when_required_env_missing(self):

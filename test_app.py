@@ -400,6 +400,34 @@ class TestIncidentAutoDetection:
         active = database.get_active_incident_for_service("RecoverSvc")
         assert active is None  # Should be resolved
 
+    def test_auto_resolve_on_recovery_uses_alert_orchestrator(self):
+        from app import run_service_check
+
+        svc = {"name": "RecoverSvc2", "type": "http", "url": "https://example.com"}
+        inc_id = database.create_incident(
+            title="RecoverSvc2 Outage",
+            impact="partial",
+            message="down",
+            service_name="RecoverSvc2",
+        )
+
+        with (
+            __import__("unittest.mock", fromlist=["patch"]).patch(
+                "app.run_check"
+            ) as mock_check,
+            __import__("unittest.mock", fromlist=["patch"]).patch(
+                "app.resolve_incident_with_alerts"
+            ) as mock_resolve,
+        ):
+            mock_check.return_value = ("up", 50.0, None)
+            mock_resolve.return_value = True
+            run_service_check(svc)
+
+        mock_resolve.assert_called_once_with(
+            incident_id=inc_id,
+            message="Service has recovered. Automatically resolved.",
+        )
+
     def test_skipped_check_does_not_record_or_incident(self):
         from app import run_service_check
 
@@ -437,6 +465,47 @@ class TestIncidentSeverity:
         from app import _incident_severity
 
         assert _incident_severity([{"impact": "partial"}]) == "partial"
+
+
+class TestDnsBarResolution:
+    def test_dns_bar_auto_resolve_uses_alert_orchestrator(self, app_client):
+        import app as app_module
+
+        database.create_incident(
+            title="DNS Incident",
+            impact="partial",
+            message="down",
+            service_name="DNS Resolution",
+        )
+
+        with (
+            patch.object(
+                app_module,
+                "DNS_BAR",
+                {
+                    "name": "DNS Resolution",
+                    "targets": [{"hostname": "api.github.com", "label": "GitHub API"}],
+                },
+            ),
+            patch.object(
+                app_module,
+                "check_dns_bar",
+                return_value=[
+                    {
+                        "label": "GitHub API",
+                        "hostname": "api.github.com",
+                        "status": "up",
+                        "ms": 1.0,
+                        "error": None,
+                    }
+                ],
+            ),
+            patch.object(app_module, "resolve_incident_with_alerts") as mock_resolve,
+        ):
+            mock_resolve.return_value = True
+            app_module.run_dns_bar_check()
+
+        mock_resolve.assert_called_once()
 
     def test_minor_incident(self):
         from app import _incident_severity

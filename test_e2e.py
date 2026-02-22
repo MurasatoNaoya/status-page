@@ -483,7 +483,7 @@ class TestAdminIncidentManagement:
         assert forms.count() >= 1, "Expected CSRF tokens in admin forms"
 
 
-# ── Loop 7: Admin Backfill + Metrics ───────────────────────────────────────
+# ── Loop 7: Admin Backfill + Integrations ──────────────────────────────────
 
 
 class TestAdminBackfill:
@@ -511,7 +511,6 @@ class TestAdminBackfill:
     def test_integration_rows_present(self, page, live_server, admin_session):
         rows = admin_session.locator(".integration-row")
         assert rows.count() >= 3, "Expected Slack, Teams, Jira integration rows"
-
 
 
 # ── Loop 8: Edge Cases + Error Handling ────────────────────────────────────

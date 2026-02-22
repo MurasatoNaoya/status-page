@@ -13,6 +13,9 @@ import pytest
 
 # Use an in-memory / temp DB for all tests
 os.environ["STATUS_DB"] = ""  # Will be overridden per-test
+# Allow default password and missing SECRET_KEY in test mode
+os.environ.setdefault("ALLOW_DEFAULT_PASSWORD", "1")
+os.environ.setdefault("DISABLE_SCHEDULER", "1")
 
 
 @pytest.fixture(autouse=True)

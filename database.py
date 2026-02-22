@@ -1,24 +1,66 @@
 import logging
 import sqlite3
 import os
-from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 
 DB_PATH = os.environ.get("STATUS_DB", "status.db")
 
 
-@contextmanager
-def get_db():
-    # timeout=30 acts as PRAGMA busy_timeout=30000 — waits up to 30s if DB is locked
+def _make_connection():
+    """Create a new SQLite connection with standard settings."""
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
+    return conn
+
+
+@contextmanager
+def get_db():
+    """Open a short-lived connection (for background tasks and scheduler).
+
+    For request-scoped work, use ``get_request_db()`` instead so all
+    queries in a single HTTP request share one connection.
+    """
+    conn = _make_connection()
     try:
         yield conn
         conn.commit()
     finally:
         conn.close()
+
+
+def get_request_db():
+    """Return a request-scoped connection (stored on Flask ``g``).
+
+    Falls back to a fresh connection when called outside a Flask request
+    context (e.g. from the scheduler or CLI scripts).
+    """
+    try:
+        from flask import g, has_app_context
+
+        if has_app_context():
+            if "_db" not in g:
+                g._db = _make_connection()
+            return g._db
+    except ImportError:
+        pass
+    # Outside Flask — return a one-off connection (caller must close)
+    return _make_connection()
+
+
+def close_request_db(exception=None):
+    """Teardown handler — close the request-scoped connection."""
+    try:
+        from flask import g
+
+        db = g.pop("_db", None)
+        if db is not None:
+            db.commit()
+            db.close()
+    except ImportError:
+        pass
 
 
 def init_db():
@@ -61,6 +103,8 @@ def init_db():
                 ON incident_updates(incident_id);
             CREATE INDEX IF NOT EXISTS idx_incidents_external_id
                 ON incidents(external_id);
+            CREATE INDEX IF NOT EXISTS idx_incidents_service_name
+                ON incidents(service_name, resolved_at);
         """)
         # Migrations for existing DBs
         try:
@@ -108,7 +152,6 @@ def record_check(service_name, status, response_time_ms, error_message=None):
         )
 
 
-
 def cleanup_old_checks(retention_days=90):
     """Delete check_results older than retention_days."""
     cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).strftime(
@@ -126,46 +169,46 @@ def cleanup_old_checks(retention_days=90):
 def get_latest_status(service_names):
     if not service_names:
         return {}
-    with get_db() as db:
-        placeholders = ",".join("?" for _ in service_names)
-        rows = db.execute(
-            f"""SELECT cr.* FROM check_results cr
-                INNER JOIN (
-                    SELECT service_name, MAX(checked_at) as max_at
-                    FROM check_results
-                    WHERE service_name IN ({placeholders})
-                    GROUP BY service_name
-                ) latest ON cr.service_name = latest.service_name
-                           AND cr.checked_at = latest.max_at""",
-            list(service_names),
-        ).fetchall()
-        results = {name: None for name in service_names}
-        for row in rows:
-            results[row["service_name"]] = dict(row)
-        return results
+    db = get_request_db()
+    placeholders = ",".join("?" for _ in service_names)
+    rows = db.execute(
+        f"""SELECT cr.* FROM check_results cr
+            INNER JOIN (
+                SELECT service_name, MAX(checked_at) as max_at
+                FROM check_results
+                WHERE service_name IN ({placeholders})
+                GROUP BY service_name
+            ) latest ON cr.service_name = latest.service_name
+                       AND cr.checked_at = latest.max_at""",
+        list(service_names),
+    ).fetchall()
+    results = {name: None for name in service_names}
+    for row in rows:
+        results[row["service_name"]] = dict(row)
+    return results
 
 
 def get_uptime_days(service_name, days=90):
     since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
-    with get_db() as db:
-        rows = db.execute(
-            """SELECT date(checked_at) as day,
-                      COUNT(*) as total,
-                      SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END) as up_count,
-                      SUM(CASE WHEN status != 'up' THEN 1 ELSE 0 END) as down_count,
-                      GROUP_CONCAT(
-                          CASE WHEN status != 'up' AND error_message IS NOT NULL
-                               THEN error_message END,
-                          ' | '
-                      ) as errors
-               FROM check_results
-               WHERE service_name = ? AND checked_at >= ?
-               GROUP BY day ORDER BY day""",
-            (service_name, since),
-        ).fetchall()
-        return [dict(r) for r in rows]
+    db = get_request_db()
+    rows = db.execute(
+        """SELECT date(checked_at) as day,
+                  COUNT(*) as total,
+                  SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END) as up_count,
+                  SUM(CASE WHEN status != 'up' THEN 1 ELSE 0 END) as down_count,
+                  GROUP_CONCAT(
+                      CASE WHEN status != 'up' AND error_message IS NOT NULL
+                           THEN error_message END,
+                      ' | '
+                  ) as errors
+           FROM check_results
+           WHERE service_name = ? AND checked_at >= ?
+           GROUP BY day ORDER BY day""",
+        (service_name, since),
+    ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def get_incident_downtime_hours(service_name, days=90):
@@ -178,59 +221,55 @@ def get_incident_downtime_hours(service_name, days=90):
     since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
-    with get_db() as db:
-        rows = db.execute(
-            """SELECT created_at, resolved_at, impact
-               FROM incidents
-               WHERE service_name = ? AND created_at >= ?
-                 AND external_id IS NOT NULL""",
-            (service_name, since),
-        ).fetchall()
-        total_hours = 0.0
-        for row in rows:
-            if row["created_at"] and row["resolved_at"]:
-                try:
-                    start = datetime.fromisoformat(
-                        row["created_at"].replace("Z", "+00:00")
-                    )
-                    end = datetime.fromisoformat(
-                        row["resolved_at"].replace("Z", "+00:00")
-                    )
-                    hours = (end - start).total_seconds() / 3600.0
-                    if hours > 0:
-                        total_hours += hours
-                        continue
-                except (ValueError, TypeError):
-                    pass
-            # Fallback estimate when timestamps are missing/identical
-            impact = row["impact"] or "minor"
-            if impact == "major":
-                total_hours += 4.0
-            elif impact == "partial":
-                total_hours += 2.0
-            else:
-                total_hours += 1.0
-        return total_hours
+    db = get_request_db()
+    rows = db.execute(
+        """SELECT created_at, resolved_at, impact
+           FROM incidents
+           WHERE service_name = ? AND created_at >= ?
+             AND external_id IS NOT NULL""",
+        (service_name, since),
+    ).fetchall()
+    total_hours = 0.0
+    for row in rows:
+        if row["created_at"] and row["resolved_at"]:
+            try:
+                start = datetime.fromisoformat(row["created_at"].replace("Z", "+00:00"))
+                end = datetime.fromisoformat(row["resolved_at"].replace("Z", "+00:00"))
+                hours = (end - start).total_seconds() / 3600.0
+                if hours > 0:
+                    total_hours += hours
+                    continue
+            except (ValueError, TypeError):
+                pass
+        # Fallback estimate when timestamps are missing/identical
+        impact = row["impact"] or "minor"
+        if impact == "major":
+            total_hours += 4.0
+        elif impact == "partial":
+            total_hours += 2.0
+        else:
+            total_hours += 1.0
+    return total_hours
 
 
 def get_uptime_percentage(service_name, days=90):
     since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
-    with get_db() as db:
-        row = db.execute(
-            """SELECT COUNT(*) as total,
-                      SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END) as up_count
-               FROM check_results
-               WHERE service_name = ? AND checked_at >= ?""",
-            (service_name, since),
-        ).fetchone()
-        if not row or row["total"] == 0:
-            check_pct = None
-        elif row["total"] < 24:
-            check_pct = None
-        else:
-            check_pct = 100.0 * row["up_count"] / row["total"]
+    db = get_request_db()
+    row = db.execute(
+        """SELECT COUNT(*) as total,
+                  SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END) as up_count
+           FROM check_results
+           WHERE service_name = ? AND checked_at >= ?""",
+        (service_name, since),
+    ).fetchone()
+    if not row or row["total"] == 0:
+        check_pct = None
+    elif row["total"] < 24:
+        check_pct = None
+    else:
+        check_pct = 100.0 * row["up_count"] / row["total"]
 
     # Factor in feed incident downtime
     incident_hours = get_incident_downtime_hours(service_name, days)
@@ -269,39 +308,39 @@ def _attach_updates(db, incidents):
 
 def get_active_incidents():
     """Get unresolved incidents (investigating, identified, monitoring)."""
-    with get_db() as db:
-        incidents = db.execute(
-            "SELECT * FROM incidents WHERE resolved_at IS NULL ORDER BY created_at DESC"
-        ).fetchall()
-        return _attach_updates(db, incidents)
+    db = get_request_db()
+    incidents = db.execute(
+        "SELECT * FROM incidents WHERE resolved_at IS NULL ORDER BY created_at DESC"
+    ).fetchall()
+    return _attach_updates(db, incidents)
 
 
 def get_recent_incidents(limit=10):
-    with get_db() as db:
-        incidents = db.execute(
-            "SELECT * FROM incidents ORDER BY created_at DESC LIMIT ?", (limit,)
-        ).fetchall()
-        return _attach_updates(db, incidents)
+    db = get_request_db()
+    incidents = db.execute(
+        "SELECT * FROM incidents ORDER BY created_at DESC LIMIT ?", (limit,)
+    ).fetchall()
+    return _attach_updates(db, incidents)
 
 
 def get_active_incident_for_service(service_name):
     """Get the active (unresolved) incident for a specific service, if any."""
-    with get_db() as db:
-        row = db.execute(
-            "SELECT * FROM incidents WHERE service_name = ? AND resolved_at IS NULL ORDER BY created_at DESC LIMIT 1",
-            (service_name,),
-        ).fetchone()
-        return dict(row) if row else None
+    db = get_request_db()
+    row = db.execute(
+        "SELECT * FROM incidents WHERE service_name = ? AND resolved_at IS NULL ORDER BY created_at DESC LIMIT 1",
+        (service_name,),
+    ).fetchone()
+    return dict(row) if row else None
 
 
 def get_recent_checks(service_name, limit=3):
     """Get the most recent N check results for a service."""
-    with get_db() as db:
-        rows = db.execute(
-            "SELECT status, error_message, checked_at FROM check_results WHERE service_name = ? ORDER BY checked_at DESC LIMIT ?",
-            (service_name, limit),
-        ).fetchall()
-        return [dict(r) for r in rows]
+    db = get_request_db()
+    rows = db.execute(
+        "SELECT status, error_message, checked_at FROM check_results WHERE service_name = ? ORDER BY checked_at DESC LIMIT ?",
+        (service_name, limit),
+    ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def get_incident_coverage_start():
@@ -311,11 +350,11 @@ def get_incident_coverage_start():
     Used to determine which days have incident feed coverage — days before
     the oldest incident for a service are shown as grey (no data).
     """
-    with get_db() as db:
-        rows = db.execute(
-            "SELECT service_name, MIN(date(created_at)) as oldest FROM incidents WHERE service_name IS NOT NULL GROUP BY service_name"
-        ).fetchall()
-        return {r["service_name"]: r["oldest"] for r in rows}
+    db = get_request_db()
+    rows = db.execute(
+        "SELECT service_name, MIN(date(created_at)) as oldest FROM incidents WHERE service_name IS NOT NULL GROUP BY service_name"
+    ).fetchall()
+    return {r["service_name"]: r["oldest"] for r in rows}
 
 
 def get_check_coverage_start(service_names):
@@ -325,14 +364,14 @@ def get_check_coverage_start(service_names):
     """
     if not service_names:
         return {}
-    with get_db() as db:
-        placeholders = ",".join("?" for _ in service_names)
-        rows = db.execute(
-            f"SELECT service_name, MIN(date(checked_at)) as oldest "
-            f"FROM check_results WHERE service_name IN ({placeholders}) GROUP BY service_name",
-            list(service_names),
-        ).fetchall()
-        return {r["service_name"]: r["oldest"] for r in rows if r["oldest"]}
+    db = get_request_db()
+    placeholders = ",".join("?" for _ in service_names)
+    rows = db.execute(
+        f"SELECT service_name, MIN(date(checked_at)) as oldest "
+        f"FROM check_results WHERE service_name IN ({placeholders}) GROUP BY service_name",
+        list(service_names),
+    ).fetchall()
+    return {r["service_name"]: r["oldest"] for r in rows if r["oldest"]}
 
 
 def get_incidents_by_day(days=90):
@@ -341,14 +380,14 @@ def get_incidents_by_day(days=90):
         "%Y-%m-%dT%H:%M:%SZ"
     )
     today = datetime.now(timezone.utc).date()
-    with get_db() as db:
-        rows = db.execute(
-            """SELECT id, title, service_name, impact, status, created_at, resolved_at
-               FROM incidents
-               WHERE created_at >= ? OR (resolved_at IS NULL OR resolved_at >= ?)
-               ORDER BY created_at DESC""",
-            (since, since),
-        ).fetchall()
+    db = get_request_db()
+    rows = db.execute(
+        """SELECT id, title, service_name, impact, status, created_at, resolved_at
+           FROM incidents
+           WHERE created_at >= ? OR (resolved_at IS NULL OR resolved_at >= ?)
+           ORDER BY created_at DESC""",
+        (since, since),
+    ).fetchall()
 
     by_day = {}
     for row in rows:
@@ -381,11 +420,11 @@ def get_incidents_by_day(days=90):
 
 def get_incident_by_external_id(external_id):
     """Check if an incident from an external feed already exists."""
-    with get_db() as db:
-        row = db.execute(
-            "SELECT * FROM incidents WHERE external_id = ?", (external_id,)
-        ).fetchone()
-        return dict(row) if row else None
+    db = get_request_db()
+    row = db.execute(
+        "SELECT * FROM incidents WHERE external_id = ?", (external_id,)
+    ).fetchone()
+    return dict(row) if row else None
 
 
 def create_incident(
@@ -533,11 +572,11 @@ def get_feed_incident_stats(service_names):
     """
     if not service_names:
         return {"cnt": 0, "oldest": None, "newest": None}
-    with get_db() as db:
-        placeholders = ",".join("?" for _ in service_names)
-        row = db.execute(
-            f"SELECT COUNT(*) as cnt, MIN(created_at) as oldest, MAX(created_at) as newest "
-            f"FROM incidents WHERE external_id IS NOT NULL AND service_name IN ({placeholders})",
-            list(service_names),
-        ).fetchone()
-        return dict(row)
+    db = get_request_db()
+    placeholders = ",".join("?" for _ in service_names)
+    row = db.execute(
+        f"SELECT COUNT(*) as cnt, MIN(created_at) as oldest, MAX(created_at) as newest "
+        f"FROM incidents WHERE external_id IS NOT NULL AND service_name IN ({placeholders})",
+        list(service_names),
+    ).fetchone()
+    return dict(row)

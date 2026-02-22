@@ -1,0 +1,147 @@
+"""Tests for alerts.py — Slack, Teams, Jira notification integrations."""
+
+from unittest.mock import patch, MagicMock
+
+import alerts
+
+
+class TestSendAlerts:
+    def test_send_alerts_dispatches_all_channels(self):
+        with (
+            patch.object(alerts, "_send_slack") as mock_slack,
+            patch.object(alerts, "_send_teams") as mock_teams,
+            patch.object(alerts, "_create_jira_ticket") as mock_jira,
+        ):
+            alerts.send_alerts(1, "Outage", "major", "Investigating", "Svc")
+            mock_slack.assert_called_once_with(
+                1, "Outage", "major", "Investigating", "Svc"
+            )
+            mock_teams.assert_called_once_with(
+                1, "Outage", "major", "Investigating", "Svc"
+            )
+            mock_jira.assert_called_once_with(
+                1, "Outage", "major", "Investigating", "Svc"
+            )
+
+
+class TestSlack:
+    @patch.dict("os.environ", {"SLACK_WEBHOOK_URL": "https://hooks.slack.com/test"})
+    @patch("alerts.requests.post")
+    def test_sends_block_kit_payload(self, mock_post):
+        mock_post.return_value.raise_for_status = lambda: None
+        alerts._send_slack(1, "Outage", "major", "Investigating", "MySvc")
+        mock_post.assert_called_once()
+        payload = mock_post.call_args[1]["json"]
+        assert "blocks" in payload
+        assert payload["blocks"][0]["type"] == "header"
+
+    @patch.dict("os.environ", {}, clear=True)
+    @patch("alerts.requests.post")
+    def test_skips_when_no_webhook(self, mock_post):
+        alerts._send_slack(1, "Outage", "major", "msg", None)
+        mock_post.assert_not_called()
+
+    @patch.dict("os.environ", {"SLACK_WEBHOOK_URL": "https://hooks.slack.com/test"})
+    @patch("alerts.requests.post", side_effect=Exception("Connection refused"))
+    def test_handles_post_failure(self, mock_post):
+        # Should not raise
+        alerts._send_slack(1, "Outage", "major", "msg", None)
+
+
+class TestTeams:
+    @patch.dict("os.environ", {"TEAMS_WEBHOOK_URL": "https://teams.webhook.test"})
+    @patch("alerts.requests.post")
+    def test_sends_teams_payload(self, mock_post):
+        mock_post.return_value.raise_for_status = lambda: None
+        alerts._send_teams(1, "Outage", "partial", "Investigating", "Svc")
+        mock_post.assert_called_once()
+        payload = mock_post.call_args[1]["json"]
+        assert "PARTIAL" in payload["text"]
+
+    @patch.dict("os.environ", {}, clear=True)
+    @patch("alerts.requests.post")
+    def test_skips_when_no_webhook(self, mock_post):
+        alerts._send_teams(1, "Outage", "major", "msg", None)
+        mock_post.assert_not_called()
+
+
+class TestJira:
+    @patch.dict(
+        "os.environ",
+        {
+            "JIRA_URL": "https://company.atlassian.net",
+            "JIRA_PROJECT": "OPS",
+            "JIRA_USER": "user@co.com",
+            "JIRA_TOKEN": "token123",
+        },
+    )
+    @patch("alerts.requests.post")
+    def test_creates_jira_ticket(self, mock_post):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"key": "OPS-42"}
+        mock_resp.raise_for_status = lambda: None
+        mock_post.return_value = mock_resp
+        alerts._create_jira_ticket(1, "Outage", "major", "Investigating", "Svc")
+        mock_post.assert_called_once()
+        payload = mock_post.call_args[1]["json"]
+        assert payload["fields"]["project"]["key"] == "OPS"
+        assert payload["fields"]["priority"]["name"] == "Highest"
+
+    @patch.dict(
+        "os.environ",
+        {
+            "JIRA_URL": "https://company.atlassian.net",
+            "JIRA_PROJECT": "OPS",
+            "JIRA_USER": "user@co.com",
+            "JIRA_TOKEN": "token123",
+        },
+    )
+    @patch("alerts.requests.post")
+    def test_priority_mapping(self, mock_post):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"key": "OPS-1"}
+        mock_resp.raise_for_status = lambda: None
+        mock_post.return_value = mock_resp
+
+        alerts._create_jira_ticket(1, "T", "minor", "m", None)
+        assert mock_post.call_args[1]["json"]["fields"]["priority"]["name"] == "Medium"
+
+    @patch.dict("os.environ", {}, clear=True)
+    @patch("alerts.requests.post")
+    def test_skips_when_not_configured(self, mock_post):
+        alerts._create_jira_ticket(1, "T", "major", "m", None)
+        mock_post.assert_not_called()
+
+    @patch.dict(
+        "os.environ",
+        {
+            "JIRA_URL": "https://company.atlassian.net",
+            "JIRA_PROJECT": "OPS",
+            "JIRA_USER": "user@co.com",
+            "JIRA_TOKEN": "token123",
+        },
+    )
+    @patch("alerts.requests.post", side_effect=Exception("Network error"))
+    def test_handles_post_failure(self, mock_post):
+        # Should not raise
+        alerts._create_jira_ticket(1, "T", "major", "m", None)
+
+
+class TestSendResolution:
+    @patch.dict(
+        "os.environ",
+        {
+            "SLACK_WEBHOOK_URL": "https://hooks.slack.com/test",
+            "TEAMS_WEBHOOK_URL": "https://teams.webhook.test",
+        },
+    )
+    @patch("alerts.requests.post")
+    def test_sends_to_both_channels(self, mock_post):
+        alerts.send_resolution(42, "Service recovered")
+        assert mock_post.call_count == 2
+
+    @patch.dict("os.environ", {}, clear=True)
+    @patch("alerts.requests.post")
+    def test_skips_when_not_configured(self, mock_post):
+        alerts.send_resolution(42, "recovered")
+        mock_post.assert_not_called()

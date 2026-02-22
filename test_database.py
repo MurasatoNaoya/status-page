@@ -223,6 +223,32 @@ class TestCleanup:
         assert deleted >= 0
 
 
+class TestCleanupOrphanServices:
+    def test_keeps_valid_and_removes_orphans(self):
+        database.record_check("KeepMe", "up", 10.0, None)
+        database.record_check("RemoveMe", "up", 10.0, None)
+        deleted = database.cleanup_orphan_services(["KeepMe"])
+        assert deleted >= 1
+        latest = database.get_latest_status(["KeepMe", "RemoveMe"])
+        assert latest["KeepMe"] is not None
+        assert latest["RemoveMe"] is None
+
+    def test_removes_orphan_incidents(self):
+        database.create_incident(
+            title="Keep", impact="minor", message="msg", service_name="ValidSvc"
+        )
+        database.create_incident(
+            title="Remove", impact="minor", message="msg", service_name="GoneSvc"
+        )
+        database.cleanup_orphan_services(["ValidSvc"])
+        assert database.get_active_incident_for_service("ValidSvc") is not None
+        assert database.get_active_incident_for_service("GoneSvc") is None
+
+    def test_empty_valid_set_removes_all(self):
+        database.record_check("Svc", "up", 10.0, None)
+        deleted = database.cleanup_orphan_services([])
+        assert deleted >= 1
+
 
 class TestGetIncidentsByDay:
     """Test get_incidents_by_day — maps incidents to each day they span."""

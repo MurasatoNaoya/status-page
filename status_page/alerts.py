@@ -91,14 +91,14 @@ def _send_email(subject, body):
     resend_from = os.environ.get("RESEND_FROM")
     smtp_host = os.environ.get("SMTP_HOST")
     if not recipients:
-        logger.debug(
-            "Email alert not configured (need ALERT_EMAIL_TO), skipping"
-        )
+        logger.debug("Email alert not configured (need ALERT_EMAIL_TO), skipping")
         return
 
     # Prefer Resend if configured; fall back to SMTP if it fails.
     if resend_api_key and resend_from:
-        if _send_email_via_resend(subject, body, recipients, resend_api_key, resend_from):
+        if _send_email_via_resend(
+            subject, body, recipients, resend_api_key, resend_from
+        ):
             return
         if not smtp_host:
             return

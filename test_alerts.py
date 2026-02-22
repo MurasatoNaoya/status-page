@@ -145,3 +145,33 @@ class TestSendResolution:
     def test_skips_when_not_configured(self, mock_post):
         alerts.send_resolution(42, "recovered")
         mock_post.assert_not_called()
+
+    @patch.dict(
+        "os.environ",
+        {
+            "JIRA_URL": "https://company.atlassian.net",
+            "JIRA_PROJECT": "OPS",
+            "JIRA_USER": "user@co.com",
+            "JIRA_TOKEN": "token123",
+        },
+    )
+    @patch("alerts.requests.get")
+    @patch("alerts.requests.post")
+    def test_resolution_attempts_jira_comment_and_transition(self, mock_post, mock_get):
+        mock_get.side_effect = [
+            MagicMock(
+                json=lambda: {"issues": [{"key": "OPS-42"}]},
+                raise_for_status=lambda: None,
+            ),
+            MagicMock(
+                json=lambda: {"transitions": [{"id": "31", "name": "Done"}]},
+                raise_for_status=lambda: None,
+            ),
+        ]
+        mock_post.return_value.raise_for_status = lambda: None
+
+        alerts.send_resolution(42, "Service recovered")
+
+        assert mock_get.call_count == 2
+        # comment + transition
+        assert mock_post.call_count == 2

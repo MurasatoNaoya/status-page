@@ -47,6 +47,8 @@ def send_resolution(incident_id, message):
         except Exception as e:
             logger.error("Teams resolution alert failed: %s", e)
 
+    _resolve_jira_ticket(incident_id, message)
+
 
 def _send_slack(incident_id, title, impact, message, service):
     webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
@@ -149,3 +151,87 @@ def _create_jira_ticket(incident_id, title, impact, message, service):
         logger.info("Jira ticket %s created for incident #%d", issue_key, incident_id)
     except Exception as e:
         logger.error("Jira ticket creation failed: %s", e)
+
+
+def _resolve_jira_ticket(incident_id, message):
+    """Comment on and transition the Jira ticket tied to an incident (best effort)."""
+    jira_url = os.environ.get("JIRA_URL")
+    project = os.environ.get("JIRA_PROJECT")
+    user = os.environ.get("JIRA_USER")
+    token = os.environ.get("JIRA_TOKEN")
+    if not all([jira_url, project, user, token]):
+        logger.debug("JIRA env vars not fully set, skipping Jira resolution")
+        return
+
+    auth = (user, token)
+    base = jira_url.rstrip("/")
+    headers = {"Content-Type": "application/json"}
+    try:
+        jql = f'project = {project} AND summary ~ "\\"incident #{incident_id}\\"" ORDER BY created DESC'
+        search = requests.get(
+            f"{base}/rest/api/2/search",
+            params={"jql": jql, "maxResults": 1, "fields": "key,status"},
+            auth=auth,
+            headers=headers,
+            timeout=15,
+        )
+        search.raise_for_status()
+        issues = search.json().get("issues", [])
+        if not issues:
+            logger.info("No Jira ticket found for incident #%d", incident_id)
+            return
+
+        issue_key = issues[0]["key"]
+        requests.post(
+            f"{base}/rest/api/2/issue/{issue_key}/comment",
+            json={"body": f"Resolved via status-page: {message}"},
+            auth=auth,
+            headers=headers,
+            timeout=15,
+        ).raise_for_status()
+
+        transitions_resp = requests.get(
+            f"{base}/rest/api/2/issue/{issue_key}/transitions",
+            auth=auth,
+            headers=headers,
+            timeout=15,
+        )
+        transitions_resp.raise_for_status()
+        transitions = transitions_resp.json().get("transitions", [])
+        preferred = {
+            "done",
+            "resolved",
+            "resolve issue",
+            "close issue",
+            "closed",
+        }
+        target = next(
+            (
+                t
+                for t in transitions
+                if t.get("name", "").strip().lower() in preferred
+            ),
+            None,
+        )
+        if target:
+            requests.post(
+                f"{base}/rest/api/2/issue/{issue_key}/transitions",
+                json={"transition": {"id": target["id"]}},
+                auth=auth,
+                headers=headers,
+                timeout=15,
+            ).raise_for_status()
+            logger.info(
+                "Jira ticket %s transitioned via '%s' for incident #%d",
+                issue_key,
+                target.get("name", "?"),
+                incident_id,
+            )
+        else:
+            logger.info(
+                "Jira ticket %s commented but no resolve transition found for incident #%d",
+                issue_key,
+                incident_id,
+            )
+    except Exception as e:
+        logger.error("Jira resolution update failed: %s", e)

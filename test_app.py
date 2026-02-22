@@ -135,6 +135,18 @@ class TestAPIRoutes:
         )
         assert resp.status_code == 200
 
+    def test_update_incident_api_not_found(self, app_client):
+        csrf_token = "test-csrf-token"
+        with app_client.session_transaction() as sess:
+            sess["admin"] = True
+            sess["_csrf_token"] = csrf_token
+        resp = app_client.patch(
+            "/api/incidents/999999",
+            json={"status": "resolved", "message": "Fixed"},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        assert resp.status_code == 404
+
 
 class TestAdminAuth:
     def test_admin_requires_login(self, app_client):
@@ -660,13 +672,13 @@ class TestBuildServiceData:
 
 
 class TestBarCoverage:
-    """Test bar color logic per data source — coverage, green/grey/colored decisions.
+    """Test bar color logic per data source — no synthetic green states.
 
     These tests verify the exact bugs we hit:
-    - Services with feeds but no incidents must show GREEN (not grey)
-    - Services without feeds must show GREY (no false green)
+    - Services with no check data must stay GREY (no false green)
+    - Feed coverage does not imply success data
     - Incidents with service_name=None must NOT leak to unrelated services
-    - Each data source (GitHub, Azure, Docker Hub) coverage works correctly
+    - Feed service mapping still behaves correctly
     """
 
     def _seed_days(self, name, days=5):
@@ -685,57 +697,41 @@ class TestBarCoverage:
 
     # --- Coverage: green vs grey ---
 
-    def test_feed_covered_service_no_incidents_shows_green(self):
-        """Service with a feed but zero incidents should show GREEN bars, not grey.
-        Bug: Docker Hub was all grey because coverage_start had no entry."""
+    def test_feed_covered_service_without_checks_stays_grey(self):
+        """Feed coverage alone must not imply operational data."""
         from app import build_service_data
 
-        self._seed_days("FeedSvc", 5)
         latest = database.get_latest_status(["FeedSvc"])
-        # Simulate feed coverage from long ago (feed active, just no incidents)
         coverage = {"FeedSvc": "2020-01-01"}
         data, _ = build_service_data(
             [{"name": "FeedSvc", "interval": 60}], latest, coverage_start=coverage
         )
         today_bar = data[0]["days"][-1]
-        assert today_bar["uptime_pct"] is not None, (
-            "Should be green (has pct), not grey"
-        )
+        assert today_bar["uptime_pct"] is None
 
     def test_no_feed_no_incidents_shows_grey(self):
         """Service with NO feed and no incidents should show GREY bars.
         This is the correct 'no data' state."""
         from app import build_service_data
 
-        self._seed_days("NoFeedSvc", 5)
         latest = database.get_latest_status(["NoFeedSvc"])
-        # No coverage_start entry = no feed coverage
         data, _ = build_service_data([{"name": "NoFeedSvc", "interval": 60}], latest)
         today_bar = data[0]["days"][-1]
-        assert today_bar["uptime_pct"] is None, "Should be grey (no coverage)"
+        assert today_bar["uptime_pct"] is None, "Should be grey (no checks)"
 
-    def test_coverage_start_determines_green_vs_grey_boundary(self):
-        """Days before coverage_start should be grey; days on/after should be green."""
+    def test_check_history_determines_green_vs_grey_boundary(self):
+        """Only days with check history should be green."""
         from app import build_service_data
 
         self._seed_days("BoundarySvc", 30)
         latest = database.get_latest_status(["BoundarySvc"])
-        # Coverage starts 10 days ago
-        ten_days_ago = (
-            (datetime.now(timezone.utc) - timedelta(days=10)).date().isoformat()
-        )
-        coverage = {"BoundarySvc": ten_days_ago}
-        data, _ = build_service_data(
-            [{"name": "BoundarySvc", "interval": 60}], latest, coverage_start=coverage
-        )
+        data, _ = build_service_data([{"name": "BoundarySvc", "interval": 60}], latest)
         days = data[0]["days"]
-        # Last 11 bars (today + 10 days ago) should have uptime_pct
-        for d in days[-11:]:
+        for d in days[-30:]:
             assert d["uptime_pct"] is not None, (
-                f"Day {d['date']} should be green (after coverage start)"
+                f"Day {d['date']} should be green (check data exists)"
             )
-        # Bar 12 days ago should be grey
-        assert days[-12]["uptime_pct"] is None, "Day before coverage should be grey"
+        assert days[-31]["uptime_pct"] is None, "Day before check history should be grey"
 
     # --- Incident isolation: no cross-service leaks ---
 

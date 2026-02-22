@@ -275,44 +275,59 @@ def run_dns_bar_check():
 def start_scheduler():
     scheduler = BackgroundScheduler()
 
+    def _run_with_app_context(fn, *args, **kwargs):
+        with app.app_context():
+            return fn(*args, **kwargs)
+
     # Schedule DNS bar checks
     if DNS_BAR:
         interval = DNS_BAR.get("interval", 60)
         scheduler.add_job(
-            run_dns_bar_check,
+            _run_with_app_context,
             "interval",
             seconds=interval,
+            args=[run_dns_bar_check],
             id="dns_bar",
             replace_existing=True,
         )
-        scheduler.add_job(run_dns_bar_check, id="dns_bar_init")
+        scheduler.add_job(
+            _run_with_app_context, args=[run_dns_bar_check], id="dns_bar_init"
+        )
 
     for svc in all_services():
         interval = svc.get("interval", 60)
         scheduler.add_job(
-            run_service_check,
+            _run_with_app_context,
             "interval",
             seconds=interval,
-            args=[svc],
+            args=[run_service_check, svc],
             id=svc["name"],
             replace_existing=True,
         )
         # Run first check immediately
-        scheduler.add_job(run_service_check, args=[svc], id=f"{svc['name']}_init")
+        scheduler.add_job(
+            _run_with_app_context,
+            args=[run_service_check, svc],
+            id=f"{svc['name']}_init",
+        )
 
     # Schedule external status feed polling
     for feed in STATUS_FEEDS:
         interval = feed.get("interval", 300)
         scheduler.add_job(
-            poll_status_feed,
+            _run_with_app_context,
             "interval",
             seconds=interval,
-            args=[feed],
+            args=[poll_status_feed, feed],
             id=f"feed_{feed['name']}",
             replace_existing=True,
         )
         # Run first poll immediately
-        scheduler.add_job(poll_status_feed, args=[feed], id=f"feed_{feed['name']}_init")
+        scheduler.add_job(
+            _run_with_app_context,
+            args=[poll_status_feed, feed],
+            id=f"feed_{feed['name']}_init",
+        )
 
     # Periodic cleanup of stale login failure entries (every 10 minutes)
     def _prune_login_failures():
@@ -333,9 +348,10 @@ def start_scheduler():
                     del _login_failures[ip]
 
     scheduler.add_job(
-        _prune_login_failures,
+        _run_with_app_context,
         "interval",
         minutes=10,
+        args=[_prune_login_failures],
         id="login_cleanup",
         replace_existing=True,
     )
@@ -347,7 +363,13 @@ def start_scheduler():
             logger.info("Cleaned up %d old check records", deleted)
 
     scheduler.add_job(
-        _run_cleanup, "cron", hour=3, minute=0, id="db_cleanup", replace_existing=True
+        _run_with_app_context,
+        "cron",
+        hour=3,
+        minute=0,
+        args=[_run_cleanup],
+        id="db_cleanup",
+        replace_existing=True,
     )
 
     scheduler.start()
@@ -408,13 +430,9 @@ def build_service_data(svc_list, latest, incidents_by_day=None, coverage_start=N
         day_map = {d["day"]: d for d in uptime_days}
         # Need at least 3 days of data before showing colored bars
         has_history = len(uptime_days) >= 3
-        # Incident coverage: days before the oldest feed incident are grey.
-        # Services with no feed incidents have no coverage — also grey.
-        svc_coverage = coverage_start.get(name)
         days_array = []
         for i in range(89, -1, -1):
             day = (today - timedelta(days=i)).isoformat()
-            has_coverage = svc_coverage is not None and day >= svc_coverage
 
             # Always look up incidents for this day
             day_incidents = _filter_incidents_for_service(
@@ -424,13 +442,8 @@ def build_service_data(svc_list, latest, incidents_by_day=None, coverage_start=N
             if day in day_map:
                 d = day_map[day]
                 raw_pct = 100.0 * d["up_count"] / d["total"] if d["total"] > 0 else None
-                # Green if we have check history + coverage, OR feed coverage alone
-                if has_history and has_coverage:
-                    pct = raw_pct
-                elif has_coverage:
-                    pct = raw_pct if raw_pct is not None else 100.0
-                else:
-                    pct = None
+                # Never infer green from feed coverage alone: no checks means no data.
+                pct = raw_pct if has_history else None
                 # Get unique errors for the day (deduplicated)
                 errors_raw = d.get("errors") or ""
                 errors = list(
@@ -451,20 +464,16 @@ def build_service_data(svc_list, latest, incidents_by_day=None, coverage_start=N
                         "errors": errors,
                         "downtime_hours": downtime_sec // 3600,
                         "downtime_mins": (downtime_sec % 3600) // 60,
-                        "severity": severity
-                        if (has_coverage or day_incidents)
-                        else None,
+                        "severity": severity if day_incidents else None,
                         "incidents": day_incidents,
                     }
                 )
             else:
                 severity = _incident_severity(day_incidents)
-                # Within coverage: assume operational (green) if no incidents/checks
-                pct = 100.0 if has_coverage else None
                 days_array.append(
                     {
                         "date": day,
-                        "uptime_pct": pct,
+                        "uptime_pct": None,
                         "down_count": 0,
                         "total": 0,
                         "errors": [],
@@ -749,7 +758,11 @@ def api_update_incident(incident_id):
                 "error": f"Invalid status. Must be one of: {', '.join(sorted(_VALID_STATUSES))}"
             }
         ), 400
-    update_incident(incident_id, status=data["status"], message=data["message"][:2000])
+    updated = update_incident(
+        incident_id, status=data["status"], message=data["message"][:2000]
+    )
+    if not updated:
+        return jsonify({"error": "Incident not found"}), 404
     return jsonify({"ok": True})
 
 
@@ -807,6 +820,11 @@ def admin_login():
             return redirect(url_for("admin_panel"))
         with _login_lock:
             _login_failures.setdefault(ip, []).append(now)
+            # Bound memory growth between scheduled prune cycles.
+            if len(_login_failures) > 10000:
+                by_age = sorted(_login_failures.items(), key=lambda kv: max(kv[1]))
+                for old_ip, _ in by_age[: len(_login_failures) - 10000]:
+                    del _login_failures[old_ip]
         flash("Invalid credentials")
     return render_template("admin_login.html")
 
@@ -908,7 +926,10 @@ def admin_update_incident(incident_id):
     if status not in _VALID_STATUSES:
         flash("Invalid status value.")
         return redirect(url_for("admin_panel"))
-    update_incident(incident_id, status=status, message=message)
+    updated = update_incident(incident_id, status=status, message=message)
+    if not updated:
+        flash("Incident not found.")
+        return redirect(url_for("admin_panel"))
 
     if status == "resolved":
         send_resolution(incident_id=incident_id, message=message)

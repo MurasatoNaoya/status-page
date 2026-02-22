@@ -72,3 +72,71 @@ def test_get_scheduler_health_disabled():
     health = scheduler_jobs.get_scheduler_health()
     assert health["status"] == "disabled"
     assert health["enabled"] is False
+
+
+def test_run_service_check_stale_gap_skips_incident_creation():
+    run_check = Mock(return_value=("down", None, "boom"))
+    now = datetime.now(timezone.utc)
+    recent = [
+        {"status": "down", "checked_at": now.isoformat()},
+        {"status": "down", "checked_at": (now - timedelta(seconds=400)).isoformat()},
+    ]
+    declare = Mock()
+
+    scheduler_jobs.run_service_check(
+        {"name": "Svc", "interval": 60},
+        logger=Mock(),
+        incident_threshold=2,
+        run_check_fn=run_check,
+        record_check_fn=Mock(),
+        incr_fn=Mock(),
+        observe_fn=Mock(),
+        get_active_incident_for_service_fn=Mock(return_value=None),
+        get_recent_checks_fn=Mock(return_value=recent),
+        declare_incident_fn=declare,
+        resolve_incident_fn=Mock(),
+    )
+
+    declare.assert_not_called()
+
+
+def test_run_service_check_auto_resolves_when_up_and_active():
+    resolve = Mock(return_value=True)
+    scheduler_jobs.run_service_check(
+        {"name": "Svc", "interval": 60},
+        logger=Mock(),
+        run_check_fn=Mock(return_value=("up", 10.0, None)),
+        record_check_fn=Mock(),
+        incr_fn=Mock(),
+        observe_fn=Mock(),
+        get_active_incident_for_service_fn=Mock(return_value={"id": 42}),
+        get_recent_checks_fn=Mock(return_value=[]),
+        declare_incident_fn=Mock(),
+        resolve_incident_fn=resolve,
+    )
+    resolve.assert_called_once_with(
+        incident_id=42,
+        message="Service has recovered. Automatically resolved.",
+    )
+
+
+def test_run_dns_bar_check_auto_resolves_when_all_up():
+    resolve = Mock(return_value=True)
+    scheduler_jobs.run_dns_bar_check(
+        {"name": "DNS", "targets": [{"hostname": "x", "label": "x"}]},
+        logger=Mock(),
+        check_dns_bar_fn=Mock(
+            return_value=[{"status": "up", "label": "x", "hostname": "x"}]
+        ),
+        record_check_fn=Mock(),
+        incr_fn=Mock(),
+        observe_fn=Mock(),
+        get_active_incident_for_service_fn=Mock(return_value={"id": 7}),
+        get_recent_checks_fn=Mock(return_value=[]),
+        declare_incident_fn=Mock(),
+        resolve_incident_fn=resolve,
+    )
+    resolve.assert_called_once_with(
+        incident_id=7,
+        message="All DNS targets resolving normally. Automatically resolved.",
+    )

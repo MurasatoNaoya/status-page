@@ -1,5 +1,4 @@
 import logging
-import shutil
 import sqlite3
 import os
 from contextlib import contextmanager

@@ -422,3 +422,44 @@ class TestGetIncidentsByDay:
         by_day = database.get_incidents_by_day()
         today_str = datetime.now(timezone.utc).date().isoformat()
         assert by_day[today_str][0]["service_name"] == "Azure Kubernetes Service (AKS)"
+
+
+class TestDatabaseBackup:
+    def test_backup_database_returns_none_when_db_missing(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(database, "DB_PATH", str(tmp_path / "missing.db"))
+        assert database.backup_database() is None
+
+    def test_backup_database_creates_and_rotates(self, tmp_path, monkeypatch):
+        db_path = tmp_path / "status.db"
+        monkeypatch.setattr(database, "DB_PATH", str(db_path))
+        database.init_db()
+        database.record_check("Svc", "up", 10.0, None)
+
+        class _FakeDateTime:
+            _vals = [
+                datetime(2026, 2, 22, 10, 0, 1, tzinfo=timezone.utc),
+                datetime(2026, 2, 22, 10, 0, 2, tzinfo=timezone.utc),
+                datetime(2026, 2, 22, 10, 0, 3, tzinfo=timezone.utc),
+            ]
+
+            @classmethod
+            def now(cls, tz=None):
+                if cls._vals:
+                    return cls._vals.pop(0)
+                return datetime(2026, 2, 22, 10, 0, 4, tzinfo=timezone.utc)
+
+        monkeypatch.setattr(database, "datetime", _FakeDateTime)
+
+        p1 = database.backup_database(max_backups=2)
+        p2 = database.backup_database(max_backups=2)
+        p3 = database.backup_database(max_backups=2)
+
+        assert p1 and p2 and p3
+        backups = sorted((tmp_path / "backups").glob("status-*.db"))
+        assert len(backups) == 2
+        assert backups[0].name == "status-20260222-100002.db"
+        assert backups[1].name == "status-20260222-100003.db"
+
+        with sqlite3.connect(str(backups[-1])) as conn:
+            count = conn.execute("SELECT COUNT(*) FROM check_results").fetchone()[0]
+        assert count >= 1

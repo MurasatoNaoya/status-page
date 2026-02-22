@@ -8,3 +8,7 @@ __pycache__/
 .env
 .ruff_cache/
 .pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+backups/

@@ -32,6 +32,7 @@ def test_import_active_incident_sends_alert_and_saves_jira(monkeypatch):
     monkeypatch.setattr(feed_importer, "get_incident_by_external_id", lambda _x: None)
 
     created = {}
+
     def _create(**kwargs):
         created.update(kwargs)
         return 42
@@ -100,7 +101,9 @@ def test_existing_incident_resolve_sends_resolution(monkeypatch):
         "impact": "partial",
         "jira_key": "ABC-11",
     }
-    monkeypatch.setattr(feed_importer, "get_incident_by_external_id", lambda _x: existing)
+    monkeypatch.setattr(
+        feed_importer, "get_incident_by_external_id", lambda _x: existing
+    )
 
     monkeypatch.setattr(feed_importer, "update_incident", lambda *a, **k: None)
     monkeypatch.setattr(feed_importer, "update_incident_impact", lambda *a, **k: None)
@@ -118,7 +121,9 @@ def test_existing_incident_resolve_sends_resolution(monkeypatch):
 
 
 def test_existing_incident_reopen_sends_alert(monkeypatch):
-    monkeypatch.setattr(feed_importer, "poll_feed", lambda cfg: [_item(status="investigating")])
+    monkeypatch.setattr(
+        feed_importer, "poll_feed", lambda cfg: [_item(status="investigating")]
+    )
 
     existing = {
         "id": 99,
@@ -126,7 +131,9 @@ def test_existing_incident_reopen_sends_alert(monkeypatch):
         "impact": "partial",
         "jira_key": None,
     }
-    monkeypatch.setattr(feed_importer, "get_incident_by_external_id", lambda _x: existing)
+    monkeypatch.setattr(
+        feed_importer, "get_incident_by_external_id", lambda _x: existing
+    )
 
     monkeypatch.setattr(feed_importer, "update_incident", lambda *a, **k: None)
     monkeypatch.setattr(feed_importer, "update_incident_impact", lambda *a, **k: None)
@@ -165,7 +172,12 @@ def test_integrityerror_race_path_still_sends_resolution(monkeypatch):
         calls["n"] += 1
         if calls["n"] == 1:
             return None
-        return {"id": 501, "status": "investigating", "impact": "partial", "jira_key": None}
+        return {
+            "id": 501,
+            "status": "investigating",
+            "impact": "partial",
+            "jira_key": None,
+        }
 
     monkeypatch.setattr(feed_importer, "get_incident_by_external_id", _get_existing)
 

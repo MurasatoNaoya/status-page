@@ -67,7 +67,9 @@ def _default_runtime_context_provider() -> RuntimeContext:
     return {}  # type: ignore[return-value]
 
 
-_runtime_context_provider: Callable[[], RuntimeContext] = _default_runtime_context_provider
+_runtime_context_provider: Callable[[], RuntimeContext] = (
+    _default_runtime_context_provider
+)
 
 
 def set_runtime_context_provider(provider: Callable[[], RuntimeContext]) -> None:

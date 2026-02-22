@@ -8,6 +8,9 @@ Configure via environment variables:
   JIRA_USER           - e.g. you@company.com
   JIRA_TOKEN          - API token from https://id.atlassian.net/manage-profile/security/api-tokens
   ALERT_EMAIL_TO      - comma-separated recipient emails
+  RESEND_API_KEY      - Resend API key (preferred email transport)
+  RESEND_FROM         - Verified sender address for Resend
+  RESEND_REPLY_TO     - Optional reply-to address for Resend emails
   SMTP_HOST           - SMTP server hostname (required for email alerts)
   SMTP_PORT           - SMTP server port (default: 587)
   SMTP_USER           - SMTP username (optional)
@@ -84,13 +87,60 @@ def _send_email(subject, body):
     recipients_raw = os.environ.get("ALERT_EMAIL_TO", "")
     recipients = [r.strip() for r in recipients_raw.split(",") if r.strip()]
     recipients = [r for r in recipients if "@" in r]
+    resend_api_key = os.environ.get("RESEND_API_KEY")
+    resend_from = os.environ.get("RESEND_FROM")
     smtp_host = os.environ.get("SMTP_HOST")
-    if not smtp_host or not recipients:
+    if not recipients:
         logger.debug(
-            "Email alert not configured (need SMTP_HOST and ALERT_EMAIL_TO), skipping"
+            "Email alert not configured (need ALERT_EMAIL_TO), skipping"
         )
         return
 
+    # Prefer Resend if configured; fall back to SMTP if it fails.
+    if resend_api_key and resend_from:
+        if _send_email_via_resend(subject, body, recipients, resend_api_key, resend_from):
+            return
+        if not smtp_host:
+            return
+
+    if not smtp_host:
+        logger.debug(
+            "Email alert not configured (need RESEND_API_KEY/RESEND_FROM or SMTP_HOST), skipping"
+        )
+        return
+
+    _send_email_via_smtp(subject, body, recipients, smtp_host)
+
+
+def _send_email_via_resend(subject, body, recipients, api_key, from_email):
+    payload = {
+        "from": from_email,
+        "to": recipients,
+        "subject": subject,
+        "text": body,
+    }
+    reply_to = os.environ.get("RESEND_REPLY_TO")
+    if reply_to:
+        payload["reply_to"] = reply_to
+    try:
+        resp = requests.post(
+            "https://api.resend.com/emails",
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        logger.info("Email alert sent via Resend to %d recipient(s)", len(recipients))
+        return True
+    except Exception as e:
+        logger.error("Resend email alert failed: %s", e)
+        return False
+
+
+def _send_email_via_smtp(subject, body, recipients, smtp_host):
     raw_port = os.environ.get("SMTP_PORT", "587")
     try:
         smtp_port = int(raw_port)
@@ -126,9 +176,9 @@ def _send_email(subject, body):
                 if smtp_user and smtp_pass:
                     server.login(smtp_user, smtp_pass)
                 server.send_message(msg)
-        logger.info("Email alert sent to %d recipient(s)", len(recipients))
+        logger.info("Email alert sent via SMTP to %d recipient(s)", len(recipients))
     except Exception as e:
-        logger.error("Email alert failed: %s", e)
+        logger.error("SMTP email alert failed: %s", e)
 
 
 def _send_slack(incident_id, title, impact, message, service):

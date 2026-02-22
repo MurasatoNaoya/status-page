@@ -364,7 +364,7 @@
             {% set slack = config.get('SLACK_WEBHOOK_URL') %}
             {% set teams = config.get('TEAMS_WEBHOOK_URL') %}
             {% set jira = config.get('JIRA_URL') %}
-            {% set email = config.get('ALERT_EMAIL_TO') and config.get('SMTP_HOST') %}
+            {% set email = config.get('ALERT_EMAIL_TO') and ((config.get('RESEND_API_KEY') and config.get('RESEND_FROM')) or config.get('SMTP_HOST')) %}
             <div class="integration-row">
                 <span>Slack</span>
                 <span class="int-status {{ 'configured' if slack else 'not-configured' }}">

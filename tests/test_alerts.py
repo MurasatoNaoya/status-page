@@ -262,6 +262,50 @@ class TestEmail:
     @patch.dict(
         "os.environ",
         {
+            "RESEND_API_KEY": "re_test",
+            "RESEND_FROM": "alerts@example.com",
+            "ALERT_EMAIL_TO": "ops@example.com",
+        },
+    )
+    @patch("status_page.alerts.smtplib.SMTP")
+    @patch("status_page.alerts.requests.post")
+    def test_email_prefers_resend_when_configured(self, mock_post, mock_smtp):
+        mock_post.return_value.raise_for_status = lambda: None
+
+        alerts._send_email("Subject", "Body")
+
+        mock_post.assert_called_once()
+        args, kwargs = mock_post.call_args
+        assert args[0] == "https://api.resend.com/emails"
+        assert kwargs["json"]["from"] == "alerts@example.com"
+        assert kwargs["json"]["to"] == ["ops@example.com"]
+        mock_smtp.assert_not_called()
+
+    @patch.dict(
+        "os.environ",
+        {
+            "RESEND_API_KEY": "re_test",
+            "RESEND_FROM": "alerts@example.com",
+            "ALERT_EMAIL_TO": "ops@example.com",
+            "SMTP_HOST": "smtp.example.com",
+            "SMTP_PORT": "587",
+        },
+    )
+    @patch("status_page.alerts.smtplib.SMTP")
+    @patch("status_page.alerts.requests.post", side_effect=Exception("Resend down"))
+    def test_email_falls_back_to_smtp_when_resend_fails(self, mock_post, mock_smtp):
+        server = MagicMock()
+        mock_smtp.return_value.__enter__.return_value = server
+
+        alerts._send_email("Subject", "Body")
+
+        mock_post.assert_called_once()
+        mock_smtp.assert_called_once()
+        server.send_message.assert_called_once()
+
+    @patch.dict(
+        "os.environ",
+        {
             "SMTP_HOST": "smtp.example.com",
             "SMTP_PORT": "not-a-port",
             "SMTP_USER": "alerts@example.com",

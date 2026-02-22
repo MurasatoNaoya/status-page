@@ -941,6 +941,8 @@ def admin_panel():
         "JIRA_URL": os.environ.get("JIRA_URL"),
         "ALERT_EMAIL_TO": os.environ.get("ALERT_EMAIL_TO"),
         "SMTP_HOST": os.environ.get("SMTP_HOST"),
+        "RESEND_API_KEY": os.environ.get("RESEND_API_KEY"),
+        "RESEND_FROM": os.environ.get("RESEND_FROM"),
     }
     # Build feed coverage info for the backfill section
     feed_coverage = []

@@ -154,6 +154,9 @@ class TestSendResolution:
     def test_sends_to_both_channels(self, mock_email, mock_post):
         alerts.send_resolution(42, "Service recovered")
         assert mock_post.call_count == 2
+        slack_payload = mock_post.call_args_list[0].kwargs["json"]
+        assert "blocks" in slack_payload
+        assert slack_payload["blocks"][0]["type"] == "header"
         mock_email.assert_called_once_with(42, "Service recovered")
 
     @patch.dict("os.environ", {}, clear=True)

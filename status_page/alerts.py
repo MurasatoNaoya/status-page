@@ -44,7 +44,20 @@ def send_resolution(incident_id, message, jira_key=None):
     if slack_url:
         try:
             payload = {
-                "text": f":white_check_mark: *Incident #{incident_id} Resolved*\n{message}",
+                "text": f":white_check_mark: Incident #{incident_id} resolved",
+                "blocks": [
+                    {
+                        "type": "header",
+                        "text": {
+                            "type": "plain_text",
+                            "text": f"\u2705 Incident #{incident_id} Resolved",
+                        },
+                    },
+                    {
+                        "type": "section",
+                        "text": {"type": "mrkdwn", "text": message},
+                    },
+                ],
             }
             requests.post(slack_url, json=payload, timeout=10)
         except Exception as e:

@@ -6,17 +6,13 @@ import secrets
 import threading
 import time
 from datetime import datetime
-from functools import wraps
 
 import yaml
 from flask import (
     Flask,
     g,
-    jsonify,
     render_template,
     request,
-    redirect,
-    url_for,
     session,
 )
 
@@ -45,7 +41,7 @@ from status_page.status_view import (
     filter_incidents_for_service as status_view_filter_incidents_for_service,
     incident_severity as status_view_incident_severity,
 )
-from status_page.telemetry import incr, snapshot
+from status_page.telemetry import incr, observe, snapshot
 from status_page.database import (
     backfill_check_gaps,
     cleanup_orphan_services,
@@ -66,6 +62,7 @@ from status_page.database import (
 from status_page.routes.admin import admin_bp
 from status_page.routes.api import api_bp
 from status_page.routes.public import public_bp
+from status_page.runtime import set_runtime_context_provider
 
 # Number of consecutive failures before auto-creating an incident
 INCIDENT_THRESHOLD = 3
@@ -166,18 +163,6 @@ def set_security_headers(response):
     return response
 
 
-def login_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if not session.get("admin"):
-            if request.path.startswith("/api/"):
-                return jsonify({"error": "Authentication required"}), 401
-            return redirect(url_for("admin.login"))
-        return f(*args, **kwargs)
-
-    return decorated
-
-
 @app.template_filter("gmt")
 def format_gmt(value):
     """Format an ISO timestamp as 'Feb 14, 2026 18:22 GMT'."""
@@ -237,20 +222,6 @@ STATUS_FEEDS = CONFIG.get("status_feeds") or []
 _scheduler_lock = threading.Lock()
 _scheduler = None
 
-# Expose selected symbols for route modules that import status_page.app.
-_ROUTE_EXPORTS = (
-    poll_status_feed,
-    send_test_email,
-    create_incident,
-    update_incident,
-    get_db,
-    get_feed_incident_stats,
-    get_feed_backfill_capability,
-    get_scheduler_health,
-    build_feed_coverage,
-    snapshot,
-)
-
 
 def all_services():
     """Flatten all services from top-level and groups."""
@@ -279,6 +250,7 @@ def run_service_check(service):
         run_check_fn=run_check,
         record_check_fn=record_check,
         incr_fn=incr,
+        observe_fn=observe,
         get_active_incident_for_service_fn=get_active_incident_for_service,
         get_recent_checks_fn=get_recent_checks,
         declare_incident_fn=declare_incident_with_alerts,
@@ -297,6 +269,7 @@ def run_dns_bar_check():
         check_dns_bar_fn=check_dns_bar,
         record_check_fn=record_check,
         incr_fn=incr,
+        observe_fn=observe,
         get_active_incident_for_service_fn=get_active_incident_for_service,
         get_recent_checks_fn=get_recent_checks,
         declare_incident_fn=declare_incident_with_alerts,
@@ -442,6 +415,7 @@ def _restart_scheduler():
             prune_login_failures=_prune_login_failures,
             logger=logger,
             incident_threshold=INCIDENT_THRESHOLD,
+            on_data_change=_invalidate_index_cache,
         )
 
 
@@ -459,6 +433,46 @@ def reload_runtime_config():
         logger.error("Scheduler restart failed after config reload: %s", e)
         return False, "Config loaded but scheduler restart failed. Check logs."
     return True, "Config reloaded successfully."
+
+
+def _runtime_context_provider():
+    return {
+        "admin_user": ADMIN_USER,
+        "admin_pass": ADMIN_PASS,
+        "login_failures": _login_failures,
+        "login_lock": _login_lock,
+        "login_window_seconds": _LOGIN_WINDOW_SECONDS,
+        "login_max_attempts": _LOGIN_MAX_ATTEMPTS,
+        "check_form_csrf": _check_csrf_token,
+        "check_api_csrf": _check_api_csrf,
+        "valid_statuses": _VALID_STATUSES,
+        "mask_email_list": _mask_email_list,
+        "all_services": all_services,
+        "status_feeds": lambda: STATUS_FEEDS,
+        "get_active_incidents": get_active_incidents,
+        "get_recent_incidents": get_recent_incidents,
+        "build_feed_coverage": build_feed_coverage,
+        "declare_incident_with_alerts": declare_incident_with_alerts,
+        "resolve_incident_with_alerts": resolve_incident_with_alerts,
+        "update_incident": update_incident,
+        "poll_status_feed": poll_status_feed,
+        "incr": incr,
+        "logger": logger,
+        "get_db": get_db,
+        "send_test_email": send_test_email,
+        "get_feed_incident_stats": get_feed_incident_stats,
+        "get_feed_backfill_capability": get_feed_backfill_capability,
+        "reload_runtime_config": reload_runtime_config,
+        "render_index_cached": _render_index_cached,
+        "create_incident": create_incident,
+        "invalidate_index_cache": _invalidate_index_cache,
+        "get_latest_status": get_latest_status,
+        "get_scheduler_health": get_scheduler_health,
+        "snapshot": snapshot,
+    }
+
+
+set_runtime_context_provider(_runtime_context_provider)
 
 
 app.register_blueprint(public_bp)

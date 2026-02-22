@@ -233,6 +233,7 @@ def create_scheduler(
     prune_login_failures,
     logger,
     incident_threshold=3,
+    on_data_change=None,
 ):
     scheduler = BackgroundScheduler()
     max_interval = max(
@@ -277,6 +278,12 @@ def create_scheduler(
                 _health["job_runs"] += 1
                 _health["last_job_finished_at"] = _iso_now()
                 _health["running_jobs"] = max(0, _health["running_jobs"] - 1)
+            if on_data_change and job_name in {
+                "run_service_check",
+                "run_dns_bar_check",
+                "poll_status_feed",
+            }:
+                on_data_change(f"scheduler:{job_name}")
 
     if dns_bar:
         interval = dns_bar.get("interval", 60)

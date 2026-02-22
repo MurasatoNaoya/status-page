@@ -1,4 +1,5 @@
 import hmac
+import os
 import time
 
 from flask import (
@@ -12,10 +13,15 @@ from flask import (
     url_for,
 )
 
+from status_page.runtime import get_runtime_context
+
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
 
-def _require_admin_page():
+@admin_bp.before_request
+def _require_admin_for_non_login():
+    if request.endpoint == "admin.login":
+        return None
     if not session.get("admin"):
         return redirect(url_for("admin.login"))
     return None
@@ -23,64 +29,56 @@ def _require_admin_page():
 
 @admin_bp.route("/login", methods=["GET", "POST"])
 def login():
-    from status_page import app as app_module
+    ctx = get_runtime_context()
 
     if request.method == "POST":
-        if not app_module._check_csrf_token():
+        if not ctx["check_form_csrf"]():
             flash("Invalid form submission. Please try again.")
             return render_template("admin_login.html")
 
         ip = request.remote_addr or "unknown"
         now = time.monotonic()
+        login_failures = ctx["login_failures"]
+        login_lock = ctx["login_lock"]
+        login_window = ctx["login_window_seconds"]
+        login_max_attempts = ctx["login_max_attempts"]
 
-        with app_module._login_lock:
-            attempts = [
-                t
-                for t in app_module._login_failures.get(ip, [])
-                if now - t < app_module._LOGIN_WINDOW_SECONDS
-            ]
+        with login_lock:
+            attempts = [t for t in login_failures.get(ip, []) if now - t < login_window]
             if attempts:
-                app_module._login_failures[ip] = attempts
+                login_failures[ip] = attempts
             else:
-                app_module._login_failures.pop(ip, None)
-            if (
-                len(app_module._login_failures.get(ip, []))
-                >= app_module._LOGIN_MAX_ATTEMPTS
-            ):
+                login_failures.pop(ip, None)
+            if len(login_failures.get(ip, [])) >= login_max_attempts:
                 flash("Too many login attempts. Please try again later.")
                 return render_template("admin_login.html"), 429
 
         user_ok = hmac.compare_digest(
-            request.form.get("username", ""), app_module.ADMIN_USER
+            request.form.get("username", ""), ctx["admin_user"]
         )
         pass_ok = hmac.compare_digest(
-            request.form.get("password", ""), app_module.ADMIN_PASS
+            request.form.get("password", ""), ctx["admin_pass"]
         )
         if user_ok and pass_ok:
-            with app_module._login_lock:
-                app_module._login_failures.pop(ip, None)
+            with login_lock:
+                login_failures.pop(ip, None)
             session["admin"] = True
             return redirect(url_for("admin.panel"))
-        with app_module._login_lock:
-            app_module._login_failures.setdefault(ip, []).append(now)
-            if len(app_module._login_failures) > 10000:
-                by_age = sorted(
-                    app_module._login_failures.items(), key=lambda kv: max(kv[1])
-                )
-                for old_ip, _ in by_age[: len(app_module._login_failures) - 10000]:
-                    del app_module._login_failures[old_ip]
+
+        with login_lock:
+            login_failures.setdefault(ip, []).append(now)
+            if len(login_failures) > 10000:
+                by_age = sorted(login_failures.items(), key=lambda kv: max(kv[1]))
+                for old_ip, _ in by_age[: len(login_failures) - 10000]:
+                    del login_failures[old_ip]
         flash("Invalid credentials")
     return render_template("admin_login.html")
 
 
 @admin_bp.route("/logout", methods=["POST"])
 def logout():
-    from status_page import app as app_module
-
-    guard = _require_admin_page()
-    if guard is not None:
-        return guard
-    if not app_module._check_csrf_token():
+    ctx = get_runtime_context()
+    if not ctx["check_form_csrf"]():
         flash("Invalid form submission. Please try again.")
         return redirect(url_for("admin.panel"))
     session.pop("admin", None)
@@ -89,25 +87,21 @@ def logout():
 
 @admin_bp.route("")
 def panel():
-    from status_page import app as app_module
-
-    guard = _require_admin_page()
-    if guard is not None:
-        return guard
-    active = app_module.get_active_incidents()
-    recent = app_module.get_recent_incidents(limit=20)
-    svc_names = [s["name"] for s in app_module.all_services()]
+    ctx = get_runtime_context()
+    active = ctx["get_active_incidents"]()
+    recent = ctx["get_recent_incidents"](limit=20)
+    svc_names = [s["name"] for s in ctx["all_services"]()]
     integrations = {
-        "SLACK_WEBHOOK_URL": app_module.os.environ.get("SLACK_WEBHOOK_URL"),
-        "TEAMS_WEBHOOK_URL": app_module.os.environ.get("TEAMS_WEBHOOK_URL"),
-        "JIRA_URL": app_module.os.environ.get("JIRA_URL"),
-        "ALERT_EMAIL_TO": app_module.os.environ.get("ALERT_EMAIL_TO"),
-        "ALERT_EMAIL_TO_MASKED": app_module._mask_email_list(
-            app_module.os.environ.get("ALERT_EMAIL_TO")
+        "SLACK_WEBHOOK_URL": os.environ.get("SLACK_WEBHOOK_URL"),
+        "TEAMS_WEBHOOK_URL": os.environ.get("TEAMS_WEBHOOK_URL"),
+        "JIRA_URL": os.environ.get("JIRA_URL"),
+        "ALERT_EMAIL_TO": os.environ.get("ALERT_EMAIL_TO"),
+        "ALERT_EMAIL_TO_MASKED": ctx["mask_email_list"](
+            os.environ.get("ALERT_EMAIL_TO")
         ),
-        "SMTP_HOST": app_module.os.environ.get("SMTP_HOST"),
-        "RESEND_API_KEY": bool(app_module.os.environ.get("RESEND_API_KEY")),
-        "RESEND_FROM": app_module.os.environ.get("RESEND_FROM"),
+        "SMTP_HOST": os.environ.get("SMTP_HOST"),
+        "RESEND_API_KEY": bool(os.environ.get("RESEND_API_KEY")),
+        "RESEND_FROM": os.environ.get("RESEND_FROM"),
     }
     return render_template(
         "admin.html",
@@ -115,18 +109,14 @@ def panel():
         recent_incidents=recent,
         services=svc_names,
         config=integrations,
-        feed_coverage=app_module.build_feed_coverage(app_module.STATUS_FEEDS),
+        feed_coverage=ctx["build_feed_coverage"](ctx["status_feeds"]()),
     )
 
 
 @admin_bp.route("/declare", methods=["POST"])
 def declare_incident():
-    from status_page import app as app_module
-
-    guard = _require_admin_page()
-    if guard is not None:
-        return guard
-    if not app_module._check_csrf_token():
+    ctx = get_runtime_context()
+    if not ctx["check_form_csrf"]():
         flash("Invalid form submission. Please try again.")
         return redirect(url_for("admin.panel"))
     title = request.form.get("title", "").strip()[:255]
@@ -138,108 +128,92 @@ def declare_incident():
         impact = "partial"
     message = request.form.get("message", "Investigating the issue.").strip()[:2000]
     service = request.form.get("service") or None
-    app_module.declare_incident_with_alerts(
+    ctx["declare_incident_with_alerts"](
         title=title, impact=impact, message=message, service_name=service
     )
-    app_module._invalidate_index_cache("admin_declare_incident")
+    ctx["invalidate_index_cache"]("admin_declare_incident")
     flash(f"Incident declared: {title}")
     return redirect(url_for("admin.panel"))
 
 
 @admin_bp.route("/update/<int:incident_id>", methods=["POST"])
 def update_incident(incident_id):
-    from status_page import app as app_module
-
-    guard = _require_admin_page()
-    if guard is not None:
-        return guard
-    if not app_module._check_csrf_token():
+    ctx = get_runtime_context()
+    if not ctx["check_form_csrf"]():
         flash("Invalid form submission. Please try again.")
         return redirect(url_for("admin.panel"))
     status = request.form["status"]
     message = request.form["message"][:2000]
-    if status not in app_module._VALID_STATUSES:
+    if status not in ctx["valid_statuses"]:
         flash("Invalid status value.")
         return redirect(url_for("admin.panel"))
     if status == "resolved":
-        resolved = app_module.resolve_incident_with_alerts(
+        resolved = ctx["resolve_incident_with_alerts"](
             incident_id=incident_id, message=message
         )
         if not resolved:
             flash("Incident not found.")
             return redirect(url_for("admin.panel"))
     else:
-        updated = app_module.update_incident(
-            incident_id, status=status, message=message
-        )
+        updated = ctx["update_incident"](incident_id, status=status, message=message)
         if not updated:
             flash("Incident not found.")
             return redirect(url_for("admin.panel"))
-    app_module._invalidate_index_cache("admin_update_incident")
+    ctx["invalidate_index_cache"]("admin_update_incident")
     flash(f"Incident updated to: {status}")
     return redirect(url_for("admin.panel"))
 
 
 @admin_bp.route("/backfill", methods=["POST"])
 def backfill():
-    from status_page import app as app_module
-
-    guard = _require_admin_page()
-    if guard is not None:
-        return guard
-    if not app_module._check_csrf_token():
+    ctx = get_runtime_context()
+    if not ctx["check_form_csrf"]():
         flash("Invalid form submission. Please try again.")
         return redirect(url_for("admin.panel"))
-    with app_module.get_db() as db:
+    with ctx["get_db"]() as db:
         before_count = db.execute(
             "SELECT COUNT(*) FROM incidents WHERE external_id IS NOT NULL"
         ).fetchone()[0]
 
     failed_feeds = []
     succeeded_feeds = 0
-    for feed in app_module.STATUS_FEEDS:
+    for feed in ctx["status_feeds"]():
         try:
-            app_module.poll_status_feed(feed)
+            ctx["poll_status_feed"](feed)
             succeeded_feeds += 1
-            app_module.incr("backfill.feed.success")
+            ctx["incr"]("backfill.feed.success")
         except Exception as e:
-            app_module.logger.error(
-                "Backfill failed for feed %s: %s", feed.get("name"), e
-            )
+            ctx["logger"].error("Backfill failed for feed %s: %s", feed.get("name"), e)
             failed_feeds.append(feed.get("name", "unknown"))
-            app_module.incr("backfill.feed.error")
+            ctx["incr"]("backfill.feed.error")
 
-    with app_module.get_db() as db:
+    with ctx["get_db"]() as db:
         after_count = db.execute(
             "SELECT COUNT(*) FROM incidents WHERE external_id IS NOT NULL"
         ).fetchone()[0]
 
     imported = after_count - before_count
-    app_module._invalidate_index_cache("admin_backfill")
+    ctx["invalidate_index_cache"]("admin_backfill")
     if failed_feeds:
         flash(
             "Backfill partially completed: "
-            f"{imported} new incident(s), {succeeded_feeds}/{len(app_module.STATUS_FEEDS)} feed(s) succeeded. "
+            f"{imported} new incident(s), {succeeded_feeds}/{len(ctx['status_feeds']())} feed(s) succeeded. "
             f"Failed feed(s): {', '.join(failed_feeds)}."
         )
     else:
         flash(
-            f"Backfill complete: {imported} new incident(s) imported from {len(app_module.STATUS_FEEDS)} feed(s)."
+            f"Backfill complete: {imported} new incident(s) imported from {len(ctx['status_feeds']())} feed(s)."
         )
     return redirect(url_for("admin.panel"))
 
 
 @admin_bp.route("/test-email", methods=["POST"])
 def test_email():
-    from status_page import app as app_module
-
-    guard = _require_admin_page()
-    if guard is not None:
-        return guard
-    if not app_module._check_csrf_token():
+    ctx = get_runtime_context()
+    if not ctx["check_form_csrf"]():
         flash("Invalid form submission. Please try again.")
         return redirect(url_for("admin.panel"))
-    sent = app_module.send_test_email()
+    sent = ctx["send_test_email"]()
     flash(
         "Test email sent."
         if sent
@@ -250,18 +224,14 @@ def test_email():
 
 @admin_bp.route("/feed-coverage")
 def feed_coverage():
-    from status_page import app as app_module
-
-    guard = _require_admin_page()
-    if guard is not None:
-        return guard
+    ctx = get_runtime_context()
     coverage = []
-    for feed in app_module.STATUS_FEEDS:
+    for feed in ctx["status_feeds"]():
         svc_names = set()
         svc_names.update(feed.get("components", {}).values())
         svc_names.update(feed.get("covered_services", []))
-        stats = app_module.get_feed_incident_stats(svc_names)
-        capability = app_module.get_feed_backfill_capability(feed)
+        stats = ctx["get_feed_incident_stats"](svc_names)
+        capability = ctx["get_feed_backfill_capability"](feed)
         coverage.append(
             {
                 "feed": feed.get("name"),
@@ -281,14 +251,10 @@ def feed_coverage():
 
 @admin_bp.route("/reload-config", methods=["POST"])
 def reload_config():
-    from status_page import app as app_module
-
-    guard = _require_admin_page()
-    if guard is not None:
-        return guard
-    if not app_module._check_csrf_token():
+    ctx = get_runtime_context()
+    if not ctx["check_form_csrf"]():
         flash("Invalid form submission. Please try again.")
         return redirect(url_for("admin.panel"))
-    ok, msg = app_module.reload_runtime_config()
+    ok, msg = ctx["reload_runtime_config"]()
     flash(msg)
     return redirect(url_for("admin.panel"))

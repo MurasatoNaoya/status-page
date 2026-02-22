@@ -1,7 +1,4 @@
-<h1 align="center">
-  <img src="status_page/static/favicon.svg" width="26" height="26" alt="" />
-  status-page
-</h1>
+![status-page banner](docs/assets/readme-banner.svg)
 
 Lightweight Flask status dashboard for internal/public service visibility.
 

@@ -106,7 +106,9 @@ def _send_email(subject, body):
 
     # Prefer Resend if configured; fall back to SMTP if it fails.
     if resend_api_key and resend_from:
-        if _send_email_via_resend(subject, body, recipients, resend_api_key, resend_from):
+        if _send_email_via_resend(
+            subject, body, recipients, resend_api_key, resend_from
+        ):
             return True
         if not smtp_host:
             return False

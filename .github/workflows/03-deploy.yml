@@ -58,7 +58,7 @@ jobs:
         if: env.SKIP != 'true'
         run: |
           for i in 1 2 3 4 5; do
-            code=$(curl -s -o /tmp/scheduler-health.json -w "%{http_code}" "https://$DEPLOY_HOST/api/health/scheduler")
+            code=$(curl -s -o /tmp/scheduler-health.json -w "%{http_code}" "http://$DEPLOY_HOST/api/health/scheduler")
             if [ "$code" = "200" ]; then
               cat /tmp/scheduler-health.json
               exit 0

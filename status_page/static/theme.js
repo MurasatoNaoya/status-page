@@ -1,10 +1,18 @@
 // Shared theme toggle with smooth transition
 var _themeStyle = null;
+var _mediaQuery = null;
+var _manualTheme = null;
+
 function _setFavicon(theme) {
     var link = document.getElementById('favicon');
     if (!link) return;
     var accent = theme === 'dark' ? '%234080cf' : '%2376AD2A';
     link.href = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><path d='M32 6L4 20l28 14 28-14Z' fill='%23E04343'/><path d='M4 26l28 14 28-14' fill='none' stroke='%23E86235' stroke-width='4.5' stroke-linejoin='round'/><path d='M4 36l28 14 28-14' fill='none' stroke='%23FAA72A' stroke-width='4.5' stroke-linejoin='round'/><path d='M4 46l28 14 28-14' fill='none' stroke='" + accent + "' stroke-width='4.5' stroke-linejoin='round'/></svg>";
+}
+
+function _applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    _setFavicon(theme);
 }
 
 function toggleTheme() {
@@ -15,9 +23,9 @@ function toggleTheme() {
     }
     var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     var nextTheme = isDark ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', nextTheme);
+    _applyTheme(nextTheme);
+    _manualTheme = nextTheme;
     localStorage.setItem('theme', nextTheme);
-    _setFavicon(nextTheme);
     clearTimeout(toggleTheme._timer);
     toggleTheme._timer = setTimeout(function() {
         if (_themeStyle && _themeStyle.parentNode) {
@@ -29,15 +37,22 @@ function toggleTheme() {
 // Restore theme: use saved preference, fall back to system preference
 (function() {
     var saved = localStorage.getItem('theme');
-    var theme = 'light';
-    if (saved) {
-        theme = saved;
-        document.documentElement.setAttribute('data-theme', theme);
-    } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-        theme = 'dark';
-        document.documentElement.setAttribute('data-theme', theme);
+    if (saved === 'light' || saved === 'dark') {
+        _manualTheme = saved;
+        _applyTheme(saved);
+    } else {
+        if (window.matchMedia) {
+            _mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+            _applyTheme(_mediaQuery.matches ? 'dark' : 'light');
+            var onChange = function(e) {
+                if (!_manualTheme) _applyTheme(e.matches ? 'dark' : 'light');
+            };
+            if (_mediaQuery.addEventListener) _mediaQuery.addEventListener('change', onChange);
+            else if (_mediaQuery.addListener) _mediaQuery.addListener(onChange);
+        } else {
+            _applyTheme('light');
+        }
     }
-    _setFavicon(theme);
 })();
 
 document.addEventListener('click', function(e) {

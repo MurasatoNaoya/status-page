@@ -245,7 +245,9 @@ def test_existing_incident_normalizes_none_impact_to_minor(monkeypatch):
 
     impacts = []
     monkeypatch.setattr(
-        feed_importer, "update_incident_impact", lambda _id, impact: impacts.append(impact)
+        feed_importer,
+        "update_incident_impact",
+        lambda _id, impact: impacts.append(impact),
     )
 
     feed_importer.poll_status_feed({"name": "GitHub"})

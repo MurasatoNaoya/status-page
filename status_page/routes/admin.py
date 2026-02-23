@@ -142,8 +142,11 @@ def update_incident(incident_id):
     if not ctx["check_form_csrf"]():
         flash("Invalid form submission. Please try again.")
         return redirect(url_for("admin.panel"))
-    status = request.form["status"]
-    message = request.form["message"][:2000]
+    status = (request.form.get("status") or "").strip()
+    message = (request.form.get("message") or "")[:2000]
+    if not status:
+        flash("Missing status value.")
+        return redirect(url_for("admin.panel"))
     if status not in ctx["valid_statuses"]:
         flash("Invalid status value.")
         return redirect(url_for("admin.panel"))

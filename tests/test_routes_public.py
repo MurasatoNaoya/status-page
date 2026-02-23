@@ -50,6 +50,18 @@ class TestIndexPage:
         assert "__CSP_NONCE__" not in html
         assert f'<script nonce="{nonce}">' in html
 
+    def test_hsts_not_set_by_default(self, app_client):
+        resp = app_client.get("/")
+        assert "Strict-Transport-Security" not in resp.headers
+
+    def test_hsts_set_when_enabled_and_forwarded_https(self, app_client, monkeypatch):
+        import status_page.app as app_module
+
+        monkeypatch.setattr(app_module, "_ENABLE_HSTS", True)
+        monkeypatch.setattr(app_module, "_HSTS_VALUE", "max-age=123")
+        resp = app_client.get("/", headers={"X-Forwarded-Proto": "https"})
+        assert resp.headers.get("Strict-Transport-Security") == "max-age=123"
+
 
 class TestThemeToggleJS:
     """Verify the shared theme JS is loaded on pages."""

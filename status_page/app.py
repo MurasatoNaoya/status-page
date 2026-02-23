@@ -87,6 +87,13 @@ app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get(
     "SESSION_COOKIE_SECURE", "true"
 ).lower() not in ("0", "false")
+_ENABLE_HSTS = os.environ.get("ENABLE_HSTS", "false").lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+_HSTS_VALUE = os.environ.get("HSTS_VALUE", "max-age=31536000; includeSubDomains")
 
 # Admin credentials (set via env vars in production)
 ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
@@ -160,6 +167,10 @@ def set_security_headers(response):
     )
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if _ENABLE_HSTS:
+        forwarded_proto = request.headers.get("X-Forwarded-Proto", "").lower()
+        if request.is_secure or forwarded_proto == "https":
+            response.headers["Strict-Transport-Security"] = _HSTS_VALUE
     return response
 
 

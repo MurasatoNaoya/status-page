@@ -210,6 +210,45 @@ class TestAdminOperations:
         assert resp.status_code == 302
         assert mock_resolve.called
 
+    def test_update_incident_missing_status_returns_controlled_error(self, app_client):
+        csrf_token = "test-csrf-token"
+        with app_client.session_transaction() as sess:
+            sess["admin"] = True
+            sess["_csrf_token"] = csrf_token
+
+        inc_id = database.create_incident(
+            title="Outage", impact="major", message="Investigating"
+        )
+        resp = app_client.post(
+            f"/admin/update/{inc_id}",
+            data={"_csrf_token": csrf_token, "message": "Still investigating"},
+            follow_redirects=True,
+        )
+        assert resp.status_code == 200
+        assert b"Missing status value." in resp.data
+
+    def test_update_incident_missing_message_defaults_to_empty(self, app_client):
+        import status_page.app as app_module
+
+        csrf_token = "test-csrf-token"
+        with app_client.session_transaction() as sess:
+            sess["admin"] = True
+            sess["_csrf_token"] = csrf_token
+
+        inc_id = database.create_incident(
+            title="Outage", impact="major", message="Investigating"
+        )
+        with patch.object(
+            app_module, "update_incident", return_value=True
+        ) as mock_update:
+            resp = app_client.post(
+                f"/admin/update/{inc_id}",
+                data={"_csrf_token": csrf_token, "status": "identified"},
+            )
+        assert resp.status_code == 302
+        assert mock_update.called
+        assert mock_update.call_args.kwargs["message"] == ""
+
     def test_admin_test_email_success(self, app_client):
         import status_page.app as app_module
 

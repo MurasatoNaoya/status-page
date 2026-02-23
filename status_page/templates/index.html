@@ -552,7 +552,18 @@
                 }
                 setTimeout(function() {
                     var details = target.querySelector('.incident-details');
-                    if (details && !details.hasAttribute('open')) animatedOpen(details);
+                    if (details) {
+                        var body = details.querySelector('.incident-updates-body');
+                        var needsOpen = !details.hasAttribute('open') || (body && !body.classList.contains('expanded'));
+                        if (needsOpen) animatedOpen(details);
+                        // Safety retry: first interaction after load can race layout/animation state.
+                        setTimeout(function() {
+                            var body2 = details.querySelector('.incident-updates-body');
+                            if (body2 && !body2.classList.contains('expanded')) {
+                                animatedOpen(details);
+                            }
+                        }, 180);
+                    }
                     // Keep about 100px of visual buffer above the target.
                     var topY = target.getBoundingClientRect().top + window.pageYOffset - 100;
                     window.scrollTo({ top: Math.max(0, topY), behavior: 'smooth' });

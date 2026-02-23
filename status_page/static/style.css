@@ -506,7 +506,7 @@ header p {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 5px 20px;
+    padding: 3px 20px;
     font-size: 13px;
     color: var(--text-secondary);
     cursor: pointer;
@@ -519,8 +519,8 @@ header p {
 
 /* Tighter spacing for expanded group members */
 .group-section details > .services .service {
-    padding-top: 10px;
-    padding-bottom: 10px;
+    padding-top: 8px;
+    padding-bottom: 8px;
 }
 
 .group-expand-toggle::-webkit-details-marker { display: none; }

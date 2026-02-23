@@ -259,6 +259,10 @@
     var activeFilter = 'all'; // kept for click-to-scroll compatibility
 
     function toggleFilter(btn) {
+        // Keep the filter row visually anchored while list height changes.
+        var anchor = document.getElementById('incidentFilters');
+        var anchorTopBefore = anchor ? anchor.getBoundingClientRect().top : null;
+
         var filter = btn.getAttribute('data-filter');
         var isImpact = btn.hasAttribute('data-filter-type');
 
@@ -325,6 +329,14 @@
         var noResults = document.getElementById('noFilterResults');
         if (noResults) {
             noResults.style.display = (!showAll && !anyVisible) ? '' : 'none';
+        }
+
+        if (anchor && anchorTopBefore !== null) {
+            var anchorTopAfter = anchor.getBoundingClientRect().top;
+            var delta = anchorTopAfter - anchorTopBefore;
+            if (Math.abs(delta) > 1) {
+                window.scrollBy(0, delta);
+            }
         }
     }
 

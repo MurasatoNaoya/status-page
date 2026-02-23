@@ -184,8 +184,17 @@
 .backfill-desc {
     font-size: 13px;
     color: var(--text-secondary);
-    margin-bottom: 16px;
+    margin-bottom: 14px;
     line-height: 1.5;
+}
+.backfill-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 4px;
+}
+.backfill-actions form {
+    margin: 0;
 }
 .btn-backfill {
     padding: 10px 24px;
@@ -202,8 +211,23 @@
 }
 .btn-backfill:hover { background: #0d47a1; }
 .btn-backfill:active { transform: scale(0.98); }
+.btn-secondary {
+    padding: 8px 14px;
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+}
+.btn-secondary:hover {
+    color: var(--text);
+    border-color: var(--text-secondary);
+}
 .btn-test-email {
-    padding: 6px 12px;
+    padding: 7px 12px;
     background: var(--text);
     color: var(--bg);
     border: none;
@@ -211,7 +235,6 @@
     font-size: 12px;
     cursor: pointer;
     font-family: inherit;
-    margin-left: 8px;
 }
 .btn-test-email:hover { opacity: 0.9; }
 .backfill-coverage {
@@ -226,11 +249,14 @@
     margin-bottom: 8px;
 }
 .backfill-coverage-row {
-    padding: 10px 0;
+    padding: 12px 14px;
     font-size: 13px;
-    border-bottom: 1px solid var(--border);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    background: color-mix(in srgb, var(--card-bg) 90%, var(--bg));
 }
-.backfill-coverage-row:last-child { border-bottom: none; }
+.backfill-coverage-row:last-child { margin-bottom: 0; }
 .backfill-feed-header {
     display: flex;
     justify-content: space-between;

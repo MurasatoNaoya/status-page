@@ -799,13 +799,17 @@ details[open] .services.expanded {
 }
 .admin-header h1 { font-size: 20px; font-weight: 600; }
 .admin-nav { display: flex; gap: 12px; align-items: center; }
+.admin-logout-form { display: flex; align-items: center; margin: 0; }
 .admin-nav a {
     font-size: 13px;
     color: var(--text-secondary);
     text-decoration: none;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
 }
 .admin-nav a:hover { color: var(--text); }
-.admin-nav-logout { background: none; border: none; font-size: 13px; color: var(--text-secondary); cursor: pointer; font-family: inherit; padding: 0; }
+.admin-nav-logout { background: none; border: none; font-size: 13px; color: var(--text-secondary); cursor: pointer; font-family: inherit; padding: 0; line-height: 1; display: inline-flex; align-items: center; }
 .admin-nav-logout:hover { color: var(--text); }
 
 /* Footer */

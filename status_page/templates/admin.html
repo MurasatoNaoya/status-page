@@ -14,7 +14,7 @@
             <h1>Admin Panel</h1>
             <div class="admin-nav">
                 <a href="{{ url_for('public.index') }}">View Status Page</a>
-                <form method="POST" action="{{ url_for('admin.logout') }}" style="display:inline"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><button type="submit" class="admin-nav-logout">Logout</button></form>
+                <form method="POST" action="{{ url_for('admin.logout') }}" class="admin-logout-form"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><button type="submit" class="admin-nav-logout">Logout</button></form>
                 {% include '_theme_toggle.html' %}
             </div>
         </div>
@@ -106,14 +106,16 @@
                 Pull real historical incident data from public status feeds (GitHub, Azure, Docker, Red Hat).
                 Only imports real incidents &mdash; does not create synthetic data. Existing data is preserved.
             </p>
-            <form method="POST" action="{{ url_for('admin.backfill') }}" data-confirm="This will import historical incidents from public status feeds. Existing data will not be affected. Continue?">
-                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn-backfill">Backfill from Public Feeds</button>
-            </form>
-            <form method="POST" action="{{ url_for('admin.reload_config') }}" style="display:inline;" data-confirm="Reload config.yaml and restart scheduler jobs?">
-                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn-test-email">Reload Config</button>
-            </form>
+            <div class="backfill-actions">
+                <form method="POST" action="{{ url_for('admin.backfill') }}" data-confirm="This will import historical incidents from public status feeds. Existing data will not be affected. Continue?">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn-backfill">Backfill from Public Feeds</button>
+                </form>
+                <form method="POST" action="{{ url_for('admin.reload_config') }}" class="reload-config-form" data-confirm="Reload config.yaml and restart scheduler jobs?">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn-secondary">Reload Config</button>
+                </form>
+            </div>
             {% if feed_coverage %}
             <div class="backfill-coverage">
                 <h3>Feed Coverage</h3>

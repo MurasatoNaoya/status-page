@@ -483,8 +483,9 @@
             if (data.i) for (var j = 0; j < data.i.length; j++) { if (!seen[data.i[j]]) { seen[data.i[j]] = 1; related.push(data.i[j]); } }
             if (data.e) for (var j = 0; j < data.e.length; j++) { if (!seen[data.e[j]]) { seen[data.e[j]] = 1; related.push(data.e[j]); } }
             if (related.length) {
-                h += '<div class="tooltip-related"><div class="tooltip-related-header">Related</div>';
-                for (var j = 0; j < related.length; j++) h += '<div class="tooltip-incident">' + esc(related[j]) + '</div>';
+                h += '<div class="tooltip-related"><div class="tooltip-related-header">Related</div><ul class="tooltip-related-list">';
+                for (var j = 0; j < related.length; j++) h += '<li class="tooltip-incident">' + esc(related[j]) + '</li>';
+                h += '</ul>';
                 h += '</div>';
             }
 

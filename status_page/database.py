@@ -180,6 +180,29 @@ def init_db():
             db.execute(
                 "INSERT INTO schema_migrations (migration) VALUES ('incident_impact_none_to_minor')"
             )
+        row = db.execute(
+            "SELECT 1 FROM schema_migrations WHERE migration = 'rename_github_web_pages_to_github_com'"
+        ).fetchone()
+        if not row:
+            old_name = "GitHub Web Pages (github.com)"
+            new_name = "github.com"
+            db.execute(
+                "UPDATE check_results SET service_name = ? WHERE service_name = ?",
+                (new_name, old_name),
+            )
+            db.execute(
+                "UPDATE incidents SET service_name = ? WHERE service_name = ?",
+                (new_name, old_name),
+            )
+            db.execute(
+                "UPDATE incidents "
+                "SET external_id = REPLACE(external_id, ':' || ?, ':' || ?) "
+                "WHERE external_id LIKE '%' || ':' || ?",
+                (old_name, new_name, old_name),
+            )
+            db.execute(
+                "INSERT INTO schema_migrations (migration) VALUES ('rename_github_web_pages_to_github_com')"
+            )
         db.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_incidents_external_id_unique "
             "ON incidents(external_id) WHERE external_id IS NOT NULL"

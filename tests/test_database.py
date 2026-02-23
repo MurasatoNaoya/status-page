@@ -278,6 +278,31 @@ class TestIncidents:
             ).fetchone()
         assert row["impact"] == "minor"
 
+    def test_init_db_renames_github_web_pages_service_and_external_id(self):
+        old_name = "GitHub Web Pages (github.com)"
+        new_name = "github.com"
+
+        database.record_check(old_name, "up", 12.0, None)
+        inc_id = database.create_incident(
+            title="Legacy GitHub",
+            impact="minor",
+            message="msg",
+            service_name=old_name,
+            external_id=f"ext-123:{old_name}",
+        )
+        with database.get_db() as db:
+            db.execute(
+                "DELETE FROM schema_migrations WHERE migration = 'rename_github_web_pages_to_github_com'"
+            )
+
+        database.init_db()
+        latest = database.get_latest_status([new_name])
+        assert latest[new_name] is not None
+
+        inc = database.get_incident(inc_id)
+        assert inc["service_name"] == new_name
+        assert inc["external_id"] == f"ext-123:{new_name}"
+
     def test_set_incident_jira_key(self):
         inc_id = database.create_incident(
             title="Jira Link", impact="minor", message="msg"

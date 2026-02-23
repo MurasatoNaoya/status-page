@@ -11,7 +11,7 @@ status_feeds:
     max_incident_pages: 10
     components:
       "Actions": "GitHub Actions"
-      "Git Operations": "GitHub Web Pages (github.com)"
+      "Git Operations": "github.com"
       "API Requests": "GitHub API"
       "Copilot": "GitHub Copilot"
     interval: 300
@@ -260,7 +260,7 @@ groups:
 
   - name: "GitHub"
     services:
-      - name: "GitHub Web Pages (github.com)"
+      - name: "github.com"
         type: http
         url: "https://github.com"
         expected_status: 200

@@ -59,7 +59,8 @@ def send_resolution(incident_id, message, jira_key=None):
                     },
                 ],
             }
-            requests.post(slack_url, json=payload, timeout=10)
+            resp = requests.post(slack_url, json=payload, timeout=10)
+            resp.raise_for_status()
         except Exception as e:
             logger.error("Slack resolution alert failed: %s", e)
 
@@ -69,7 +70,8 @@ def send_resolution(incident_id, message, jira_key=None):
             payload = {
                 "text": f"Incident #{incident_id} Resolved: {message}",
             }
-            requests.post(teams_url, json=payload, timeout=10)
+            resp = requests.post(teams_url, json=payload, timeout=10)
+            resp.raise_for_status()
         except Exception as e:
             logger.error("Teams resolution alert failed: %s", e)
 

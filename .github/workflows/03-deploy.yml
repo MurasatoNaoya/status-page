@@ -14,7 +14,7 @@ jobs:
     steps:
       - name: Check deploy secrets
         run: |
-          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_USER" ] || [ -z "$DEPLOY_SSH_KEY" ]; then
+          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_USER" ] || [ -z "$DEPLOY_PATH" ] || [ -z "$DEPLOY_SSH_KEY" ]; then
             echo "::notice::Deploy secrets not configured, skipping deployment"
             echo "SKIP=true" >> "$GITHUB_ENV"
           fi

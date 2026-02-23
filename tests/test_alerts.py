@@ -168,6 +168,25 @@ class TestSendResolution:
     @patch.dict(
         "os.environ",
         {
+            "SLACK_WEBHOOK_URL": "https://hooks.slack.com/test",
+            "TEAMS_WEBHOOK_URL": "https://teams.webhook.test",
+        },
+    )
+    @patch("status_page.alerts.requests.post")
+    def test_resolution_handles_webhook_http_failure(self, mock_post):
+        slack_resp = MagicMock()
+        slack_resp.raise_for_status.side_effect = Exception("slack failed")
+        teams_resp = MagicMock()
+        teams_resp.raise_for_status.return_value = None
+        mock_post.side_effect = [slack_resp, teams_resp]
+
+        # Should not raise if one webhook fails.
+        alerts.send_resolution(42, "Service recovered")
+        assert mock_post.call_count == 2
+
+    @patch.dict(
+        "os.environ",
+        {
             "JIRA_URL": "https://company.atlassian.net",
             "JIRA_PROJECT": "OPS",
             "JIRA_USER": "user@co.com",

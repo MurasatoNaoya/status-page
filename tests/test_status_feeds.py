@@ -816,7 +816,7 @@ class TestPollStatusioAPIIntegration:
     def test_maps_status_codes_to_impact(self):
         from status_page.status_feeds import _statusio_code_to_impact
 
-        assert _statusio_code_to_impact(100) == "none"
+        assert _statusio_code_to_impact(100) == "minor"
         assert _statusio_code_to_impact(300) == "minor"
         assert _statusio_code_to_impact(400) == "partial"
         assert _statusio_code_to_impact(500) == "major"

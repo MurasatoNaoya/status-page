@@ -15,6 +15,17 @@ from status_page.status_feeds import poll_feed
 
 logger = logging.getLogger(__name__)
 
+_VALID_INCIDENT_IMPACTS = {"major", "partial", "minor"}
+
+
+def _normalize_incident_impact(value):
+    """Normalize feed impact values to UI-supported incident severities."""
+    if value == "none":
+        return "minor"
+    if value in _VALID_INCIDENT_IMPACTS:
+        return value
+    return "minor"
+
 
 def _sync_existing_incident(existing, item, svc_ext_id):
     """Apply feed status/impact changes to an already-imported incident."""
@@ -33,7 +44,7 @@ def _sync_existing_incident(existing, item, svc_ext_id):
             svc_ext_id,
             new_status,
         )
-    new_impact = item.get("impact", "minor")
+    new_impact = _normalize_incident_impact(item.get("impact", "minor"))
     if existing["impact"] != new_impact:
         update_incident_impact(existing["id"], new_impact)
     return previous_status, new_status
@@ -102,7 +113,7 @@ def poll_status_feed(feed_config):
             try:
                 inc_id = create_incident(
                     title=item["title"],
-                    impact=item.get("impact", "minor"),
+                    impact=_normalize_incident_impact(item.get("impact", "minor")),
                     message=first_msg,
                     service_name=svc_name,
                     external_id=svc_ext_id,
@@ -158,7 +169,7 @@ def poll_status_feed(feed_config):
                 jira_key = send_alerts(
                     incident_id=inc_id,
                     title=item["title"],
-                    impact=item.get("impact", "minor"),
+                    impact=_normalize_incident_impact(item.get("impact", "minor")),
                     message=first_msg,
                     service=svc_name,
                 )

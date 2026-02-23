@@ -254,11 +254,29 @@ class TestIncidents:
             title="Bad Impact", impact="partial", message="msg"
         )
         database.update_incident_impact(inc_id, "critical")
+        database.update_incident_impact(inc_id, "none")
         with database.get_db() as db:
             row = db.execute(
                 "SELECT impact FROM incidents WHERE id = ?", (inc_id,)
             ).fetchone()
         assert row["impact"] == "partial"  # unchanged
+
+    def test_init_db_migrates_none_impact_to_minor(self):
+        inc_id = database.create_incident(
+            title="Legacy None", impact="minor", message="msg"
+        )
+        with database.get_db() as db:
+            db.execute("UPDATE incidents SET impact = 'none' WHERE id = ?", (inc_id,))
+            db.execute(
+                "DELETE FROM schema_migrations WHERE migration = 'incident_impact_none_to_minor'"
+            )
+
+        database.init_db()
+        with database.get_db() as db:
+            row = db.execute(
+                "SELECT impact FROM incidents WHERE id = ?", (inc_id,)
+            ).fetchone()
+        assert row["impact"] == "minor"
 
     def test_set_incident_jira_key(self):
         inc_id = database.create_incident(

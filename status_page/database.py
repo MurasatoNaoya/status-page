@@ -172,6 +172,14 @@ def init_db():
             db.execute(
                 "INSERT INTO schema_migrations (migration) VALUES ('drop_non_unique_external_id_index')"
             )
+        row = db.execute(
+            "SELECT 1 FROM schema_migrations WHERE migration = 'incident_impact_none_to_minor'"
+        ).fetchone()
+        if not row:
+            db.execute("UPDATE incidents SET impact = 'minor' WHERE impact = 'none'")
+            db.execute(
+                "INSERT INTO schema_migrations (migration) VALUES ('incident_impact_none_to_minor')"
+            )
         db.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_incidents_external_id_unique "
             "ON incidents(external_id) WHERE external_id IS NOT NULL"
@@ -613,7 +621,7 @@ def update_incident(incident_id, status, message, created_at=None, resolved_at=N
         return True
 
 
-_VALID_IMPACTS = {"major", "partial", "minor", "none"}
+_VALID_IMPACTS = {"major", "partial", "minor"}
 
 
 def update_incident_impact(incident_id, impact):

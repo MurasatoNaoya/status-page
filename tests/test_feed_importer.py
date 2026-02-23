@@ -202,6 +202,56 @@ def test_integrityerror_race_path_still_sends_resolution(monkeypatch):
     assert resolutions and resolutions[0]["incident_id"] == 501
 
 
+def test_import_normalizes_none_impact_to_minor(monkeypatch):
+    monkeypatch.setattr(
+        feed_importer,
+        "poll_feed",
+        lambda cfg: [_item(impact="none")],
+    )
+    monkeypatch.setattr(feed_importer, "get_incident_by_external_id", lambda _x: None)
+
+    created = {}
+
+    def _create(**kwargs):
+        created.update(kwargs)
+        return 77
+
+    monkeypatch.setattr(feed_importer, "create_incident", _create)
+    monkeypatch.setattr(feed_importer, "send_alerts", lambda **_kwargs: None)
+    monkeypatch.setattr(feed_importer, "set_incident_jira_key", lambda *_a: None)
+    monkeypatch.setattr(feed_importer, "update_incident", lambda *a, **k: None)
+    monkeypatch.setattr(feed_importer, "send_resolution", lambda **_k: None)
+    monkeypatch.setattr(feed_importer, "update_incident_impact", lambda *a, **k: None)
+
+    feed_importer.poll_status_feed({"name": "GitHub"})
+    assert created["impact"] == "minor"
+
+
+def test_existing_incident_normalizes_none_impact_to_minor(monkeypatch):
+    monkeypatch.setattr(feed_importer, "poll_feed", lambda cfg: [_item(impact="none")])
+    existing = {
+        "id": 202,
+        "status": "investigating",
+        "impact": "partial",
+        "jira_key": None,
+    }
+    monkeypatch.setattr(
+        feed_importer, "get_incident_by_external_id", lambda _x: existing
+    )
+    monkeypatch.setattr(feed_importer, "update_incident", lambda *a, **k: None)
+    monkeypatch.setattr(feed_importer, "send_resolution", lambda **_k: None)
+    monkeypatch.setattr(feed_importer, "send_alerts", lambda **_k: None)
+    monkeypatch.setattr(feed_importer, "set_incident_jira_key", lambda *_a: None)
+
+    impacts = []
+    monkeypatch.setattr(
+        feed_importer, "update_incident_impact", lambda _id, impact: impacts.append(impact)
+    )
+
+    feed_importer.poll_status_feed({"name": "GitHub"})
+    assert impacts == ["minor"]
+
+
 # ---------------------------------------------------------------------------
 # Integration tests (require database fixture from conftest.py)
 # ---------------------------------------------------------------------------

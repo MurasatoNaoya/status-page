@@ -24,7 +24,7 @@ def _statusio_code_to_impact(status_code):
         return "partial"
     elif status_code >= 300:
         return "minor"
-    return "none"
+    return "minor"
 
 
 # Map Status.io status codes to Atlassian-style component status strings
@@ -42,7 +42,7 @@ _STATUSIO_SEVERITY_TEXT_MAP = {
     "security issue": "major",
     "partial service disruption": "partial",
     "degraded performance": "minor",
-    "operational": "none",
+    "operational": "minor",
 }
 
 _STATUSIO_UPDATE_STATUS_MAP = {

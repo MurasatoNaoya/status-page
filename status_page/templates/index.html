@@ -541,8 +541,8 @@
                 setTimeout(function() {
                     var details = target.querySelector('.incident-details');
                     if (details && !details.hasAttribute('open')) animatedOpen(details);
-                    // Keep a comfortable visual buffer from the top.
-                    var topY = target.getBoundingClientRect().top + window.pageYOffset - 100;
+                    // Keep about 100px of visual buffer above the target.
+                    var topY = target.getBoundingClientRect().top + window.pageYOffset + 100;
                     window.scrollTo({ top: Math.max(0, topY), behavior: 'smooth' });
                     target.classList.add('incident-highlight');
                     setTimeout(function() { target.classList.remove('incident-highlight'); }, 2000);

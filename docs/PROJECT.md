@@ -407,7 +407,7 @@ status_feeds:
 | `SMTP_SSL` | SMTP SSL toggle (default false) |
 | `SLACK_WEBHOOK_URL` | Slack incoming webhook |
 | `TEAMS_WEBHOOK_URL` | Teams incoming webhook |
-| `JIRA_URL` | e.g. `https://yourcompany.atlassian.net` |
+| `JIRA_URL` | e.g. `https://example.atlassian.net` |
 | `JIRA_PROJECT` | e.g. `OPS` |
 | `JIRA_USER` | Jira email |
 | `JIRA_TOKEN` | Jira API token |
@@ -439,7 +439,7 @@ status_feeds:
 ### Local Development
 
 ```bash
-cd /Users/andrewnaoyamcwilliam/repos/status-page
+cd /path/to/status-page
 source .venv/bin/activate
 
 # Start with default credentials (dev only)
@@ -671,7 +671,7 @@ gunicorn -c gunicorn.conf.py app:app
 ```yaml
 - name: "Internal API"
   type: http
-  url: "https://internal-api.company.local/health"
+  url: "https://internal-api.example.local/health"
   requires_env: "ON_PRIVATE_NETWORK"
   interval: 60
 ```

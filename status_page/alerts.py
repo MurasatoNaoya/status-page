@@ -3,7 +3,7 @@
 Configure via environment variables:
   SLACK_WEBHOOK_URL   - Slack incoming webhook for #incidents channel
   TEAMS_WEBHOOK_URL   - Microsoft Teams incoming webhook
-  JIRA_URL            - e.g. https://yourcompany.atlassian.net
+  JIRA_URL            - e.g. https://example.atlassian.net
   JIRA_PROJECT        - e.g. OPS
   JIRA_USER           - e.g. you@company.com
   JIRA_TOKEN          - API token from https://id.atlassian.net/manage-profile/security/api-tokens

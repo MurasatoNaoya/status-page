@@ -39,3 +39,7 @@ Default admin login is `admin` / `testpass` in the example above (dev only).
 - `docs/PROJECT.md` — full architecture and operational guide
 - `docs/WORK-LAPTOP-HANDOFF.md` — handoff plan for work/VPN setup
 - `docs/ENGINEERING-ISSUES.md` — engineering backlog and refactor notes
+
+## Security and Support
+- Security policy and vulnerability reporting: `SECURITY.md`
+- Support model: best-effort community support via GitHub issues (no SLA)

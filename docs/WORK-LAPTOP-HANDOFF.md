@@ -4,7 +4,7 @@ Use this document for execution. For architecture/background, read `docs/PROJECT
 
 ## Goal
 
-Bring `status-page` from personal laptop context into work laptop + company VPN context, then validate private checks safely.
+Bring `status-page` from personal laptop context into work laptop + private VPN context, then validate private checks safely.
 
 ## Preconditions
 
@@ -66,7 +66,7 @@ dns_bar:
 services:
   - name: "Internal API"
     type: http
-    url: "https://internal-api.company.local/health"
+    url: "https://internal-api.example.local/health"
     requires_env: "ON_PRIVATE_NETWORK"
     interval: 60
 ```

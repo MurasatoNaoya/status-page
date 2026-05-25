@@ -14,9 +14,9 @@ Lightweight Flask status dashboard for internal/public service visibility.
 - Jinja templates + lightweight vanilla CSS/JS
 
 ## Design Principles
-- **No synthetic health data**: unknown history stays gray, never fabricated green.
+- **No synthetic health data**: unknown history stays grey, never fabricated green.
 - **Operationally simple**: one process model, SQLite backups, straightforward deploy.
-- **Practical extensibility**: feed adapters, check types, and alert transports are modular.
+- **Practical extensibility**: feed adapters, check types and alert transports are modular.
 
 ## Quick Start
 ```bash
